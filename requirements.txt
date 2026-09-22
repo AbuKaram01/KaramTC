@@ -1,0 +1,21 @@
+# Version bounds, not exact pins: this keeps picking up bug and security
+# fixes automatically (the lower bound), while refusing to silently jump to
+# a future major release that could change APIs this code relies on (the
+# upper bound) — the standard way to keep an unattended, rarely-revisited
+# install from breaking on its own years from now. When a new major version
+# of either library ships, bump the upper bound deliberately after checking
+# its changelog, rather than letting it happen unnoticed.
+pymupdf>=1.24.0,<2.0.0
+Pillow>=10.0.0,<13.0.0
+
+# Speech recognition for the Audio/Video tab. Everything else works without
+# these two; the tab explains how to install them if they are missing.
+# av is capped below 19: PyAV 19 removed an argument that faster-whisper 1.2
+# still passes when it opens audio, so decoding fails with the newest PyAV.
+# Raise the cap once faster-whisper supports it.
+faster-whisper>=1.1.0,<2.0.0
+av>=11.0.0,<19.0.0
+
+# PyGObject (GUI only) is best installed as a system package on Linux
+# (see README) rather than through pip, since it binds to your system's
+# GTK/GObject-Introspection libraries — pip alone cannot provide those.

@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Maintainer: AbuKaram01 <AbuKaram01@users.noreply.github.com>
+#
+# Local builds: packaging/build-arch.sh makes the source tarball from your checkout (laid out
+# like GitHub's release archive) and runs makepkg here. For the AUR, tag a release on GitHub,
+# replace 'SKIP' with the tarball's sha256 (makepkg -g) and generate .SRCINFO with:
+#     makepkg --printsrcinfo > .SRCINFO
+#
+# Like the .deb/.rpm, nothing is downloaded or compiled at install time: everything KaramTC
+# needs to run (PyMuPDF, Pillow, PyGObject, GTK4, libadwaita, Tesseract) is an Arch package,
+# so there is no private virtualenv and no pacman hook. Only the optional Audio/Video tab needs
+# faster-whisper, which is not in the official repositories; the app shows the pip command.
+#
+# Keep pkgver in sync with VERSION in src/config.py (build-arch.sh checks).
+
+pkgname=karamtc
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Karam Text Copier - copy text out of images and PDFs, fully offline'
+arch=('any')
+url='https://github.com/AbuKaram01/KaramTC'
+license=('AGPL-3.0-or-later')
+depends=(
+    'python'
+    'python-gobject'
+    'gtk4'
+    'libadwaita>=1.5'
+    'librsvg'
+    'adwaita-icon-theme'
+    'hicolor-icon-theme'
+    'python-pymupdf'
+    'python-pillow'
+    # OCR; osd = script/orientation detection
+    'tesseract'
+    'tesseract-data-eng'
+    'tesseract-data-ara'
+    'tesseract-data-osd'
+)
+optdepends=(
+    'python-pip: to install faster-whisper, which the Audio/Video tab needs'
+    'tesseract-data-fra: OCR for French'
+    'tesseract-data-deu: OCR for German'
+    'tesseract-data-spa: OCR for Spanish'
+)
+install=karamtc.install
+# GitHub names the folder inside a release archive after the repository, not the package.
+_srcdir="KaramTC-$pkgver"
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+check() {
+    cd "$srcdir/$_srcdir"
+    python -m compileall -q src
+}
+
+package() {
+    local root="$srcdir/$_srcdir" app_id=io.github.AbuKaram01.KaramTC
+
+    install -d "$pkgdir/opt/karamtc"
+    cp -r "$root/src/main.py" "$root/src/config.py" "$root/src/settings.py" \
+          "$root/src/core" "$root/src/providers" "$root/src/ui" \
+          "$pkgdir/opt/karamtc/"
+    find "$pkgdir/opt/karamtc" -name '__pycache__' -type d -prune -exec rm -rf {} +
+
+    install -d "$pkgdir/usr/bin"
+    cat > "$pkgdir/usr/bin/karamtc" << 'LAUNCHER'
+#!/bin/sh
+# Fixed path - this package always installs to /opt/karamtc.
+# PYTHONDONTWRITEBYTECODE keeps that install tree read-only at runtime
+# (no __pycache__ written under /opt, which pacman doesn't track).
+export PYTHONDONTWRITEBYTECODE=1
+exec python3 /opt/karamtc/main.py "$@"
+LAUNCHER
+    chmod 755 "$pkgdir/usr/bin/karamtc"
+
+    install -d "$pkgdir/usr/share/applications"
+    sed 's|^Exec=karamtc-exec-placeholder|Exec=karamtc|' "$root/data/$app_id.desktop" \
+        > "$pkgdir/usr/share/applications/$app_id.desktop"
+    chmod 644 "$pkgdir/usr/share/applications/$app_id.desktop"
+
+    # No icon-cache step here: pacman's own hook refreshes the cache whenever a package
+    # installs something under /usr/share/icons/hicolor.
+    install -Dm644 "$root/data/icons/hicolor/scalable/apps/$app_id.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/$app_id.svg"
+    install -Dm644 "$root/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    # whatever umask the archive was unpacked under: dirs 755, files 644 (the launcher above is 755)
+    find "$pkgdir/opt" -type d -exec chmod 755 {} +
+    find "$pkgdir/opt" -type f -exec chmod 644 {} +
+}

@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+post_install() {
+    echo "==> The Audio/Video tab needs faster-whisper, which is not in the Arch repositories."
+    echo "    Open that tab: it shows the exact pip command (install python-pip first)."
+}
+
+post_remove() {
+    # Nothing should be written under /opt/karamtc at run time (the launcher sets
+    # PYTHONDONTWRITEBYTECODE), but pacman only removes the files it installed.
+    rm -rf /opt/karamtc
+}

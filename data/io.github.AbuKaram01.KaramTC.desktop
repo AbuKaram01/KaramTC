@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=KaramTC
+Comment=Copy text out of images and PDFs, fully offline
+Exec=karamtc-exec-placeholder
+Icon=io.github.AbuKaram01.KaramTC
+Terminal=false
+Categories=Utility;GTK;
+Keywords=OCR;text;PDF;image;scan;extract;copy;
+StartupNotify=true

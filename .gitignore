@@ -1,0 +1,63 @@
+# ── Python bytecode & caches ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ── Virtual environments ────────────────────────────────────────────────────
+# scripts/install-*.sh create .venv in the project root
+.venv/
+venv/
+env/
+
+# ── Distro packages: output of packaging/build.sh and packaging/build-arch.sh ─
+/packaging/work/
+/packaging/dist/
+*.deb
+*.rpm
+*.pkg.tar.*
+
+# Leftovers if makepkg is run by hand inside packaging/arch/
+# (NOT a bare "src/" or "pkg/": that would hide the real source folder)
+/packaging/arch/src/
+/packaging/arch/pkg/
+/packaging/arch/*.tar.gz
+
+# ── Downloaded language data & partial downloads ────────────────────────────
+# The app keeps these in your user data folder (outside the repo).
+*.traineddata
+*.part
+
+# ── Secrets ─────────────────────────────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+
+# ── Editors & OS junk ───────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.log
+
+# ── Portable Tesseract that packaging/build-windows.ps1 prepares for the Windows installer ──
+/packaging/tesseract/
+
+# ── GTK 4 runtime that packaging/build-windows.ps1 prepares for the Windows installer ──
+/packaging/gtk/
+
+# ── Python's installer and the Python libraries that packaging/build-windows.ps1 prepares for the Windows installer ──
+/packaging/python/
+/packaging/wheelhouse/
+
+# ── The Visual C++ runtime DLLs that packaging/build-windows.ps1 prepares for the Windows installer ──
+/packaging/vcruntime/
