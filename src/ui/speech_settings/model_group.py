@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/speech_settings/model_group.py — Which speech model to use, and getting it.
-"""
+"""The "Speech model" group of the Speech Settings dialog: which model to use, and how to get it."""
+
 from __future__ import annotations
 
 import os
@@ -22,8 +21,8 @@ from ui import file_dialogs, saved_settings
 from ui.formatting import format_bytes
 from ui.widgets import flat_icon_button, flat_text_button, make_icon_prefix, string_list
 
-# One entry per downloadable model, then the user's own folder: (label, source, model id).
-# The recommended model says so right in its label.
+# One entry per downloadable model, then the user's own folder, as (label, source, model id). The recommended model
+# says so in its label.
 _CHOICES = [
     (f"Download {model.display_label}", SOURCE_MANAGED, model.id) for model in model_store.MODELS
 ] + [("Use a model folder I already have", SOURCE_CUSTOM, None)]
@@ -32,18 +31,26 @@ _ERROR_TOAST_TIMEOUT_S = 5
 
 
 class ModelGroup:
+    """Preferences group for choosing the speech model and for downloading, pausing or deleting it.
+
+    The user either picks one of the downloadable models or points to a faster-whisper model folder of their own.
+    Downloads run on a worker thread, and the group updates its rows from the main loop.
+
+    Args:
+        show_toast: Called with a message and an optional timeout in seconds to show a short message over the dialog.
+        get_parent: Called without arguments; returns the window a folder chooser should open over.
+        on_changed: Called without arguments whenever the model setup changes, so that the tab can refresh.
+    """
+
     def __init__(self, show_toast, get_parent, on_changed):
-        """
-        :param show_toast:  shows a short message over the dialog.
-        :param get_parent:  returns the window a folder chooser should open over.
-        :param on_changed:  called whenever the model setup changes (so the tab can refresh).
-        """
         self._show_toast = show_toast
         self._get_parent = get_parent
         self._on_changed = on_changed
-        self._cancel_event: threading.Event | None = None      # set while a download runs
+        # Set while a download runs; setting it pauses the download.
+        self._cancel_event: threading.Event | None = None
         self._downloading = False
-        self._downloading_model = model_store.get_model()      # which model the running download is for
+        # The model that the running download is for.
+        self._downloading_model = model_store.get_model()
 
         self.group = Adw.PreferencesGroup(title="Speech model")
         self._build_source_row()
@@ -51,7 +58,7 @@ class ModelGroup:
         self._build_custom_row()
         self._refresh()
 
-    # ── Construction ──────────────────────────────────────────────────
+    # --- Construction ---
 
     def _build_source_row(self) -> None:
         self._source_row = Adw.ComboRow()
@@ -63,8 +70,10 @@ class ModelGroup:
         self.group.add(self._source_row)
 
     def _build_managed_row(self) -> None:
-        self._managed_row = Adw.ActionRow(title=model_store.get_model().display_label)   # set properly by _refresh
-        self._managed_row.set_use_markup(False)     # shows server error messages
+        # The title is a placeholder; _refresh() sets the real one.
+        self._managed_row = Adw.ActionRow(title=model_store.get_model().display_label)
+        # The subtitle can show server error messages, which must not be parsed as markup.
+        self._managed_row.set_use_markup(False)
         self._managed_row.add_prefix(make_icon_prefix("folder-download-symbolic"))
         self._suffix = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._suffix.set_valign(Gtk.Align.CENTER)
@@ -78,16 +87,17 @@ class ModelGroup:
 
     def _build_custom_row(self) -> None:
         self._custom_row = Adw.ActionRow(title="Model folder")
-        self._custom_row.set_use_markup(False)      # shows a folder path
+        # The subtitle shows a folder path, which must not be parsed as markup.
+        self._custom_row.set_use_markup(False)
         self._custom_row.add_prefix(make_icon_prefix("folder-symbolic"))
         self._custom_row.add_suffix(flat_text_button("Choose…", self._on_choose_folder))
         self.group.add(self._custom_row)
 
-    # ── Showing the state ─────────────────────────────────────────────
+    # --- Showing the state ---
 
     @staticmethod
     def _saved_choice_index() -> int:
-        """The entry of _CHOICES that matches the saved settings."""
+        """Return the index of the entry of _CHOICES that matches the saved settings."""
         if saved_settings.speech_model_source() == SOURCE_CUSTOM:
             return len(_CHOICES) - 1
         saved_id = saved_settings.speech_model_id()
@@ -97,7 +107,7 @@ class ModelGroup:
         return _CHOICES[self._source_row.get_selected()][1]
 
     def _selected_model(self) -> model_store.WhisperModel:
-        """The downloadable model currently chosen (when the custom folder is chosen: the last one chosen)."""
+        """Return the downloadable model currently chosen (when the custom folder is chosen: the last one chosen)."""
         return model_store.get_model(_CHOICES[self._source_row.get_selected()][2] or saved_settings.speech_model_id())
 
     def _custom_dir(self) -> str:
@@ -130,12 +140,13 @@ class ModelGroup:
         self._delete_button.set_visible(ready and not self._downloading)
         self._source_row.set_sensitive(not self._downloading)
 
-    # ── Source and folder ─────────────────────────────────────────────
+    # --- Source and folder ---
 
     def _on_choice_selected(self, _row, _param) -> None:
         _label, source, model_id = _CHOICES[self._source_row.get_selected()]
         app_settings.set(saved_settings.SPEECH_MODEL_SOURCE, source)
-        if model_id:        # picking the folder option keeps the last downloadable model remembered
+        # Choosing the folder option has no model id, so the last downloadable model stays remembered.
+        if model_id:
             app_settings.set(saved_settings.SPEECH_MODEL_CHOICE, model_id)
         self._refresh()
         self._on_changed()
@@ -150,10 +161,10 @@ class ModelGroup:
         self._refresh()
         self._on_changed()
 
-    # ── Downloading ───────────────────────────────────────────────────
+    # --- Downloading ---
 
     def cancel_download(self) -> None:
-        """Stops a running download (what was fetched is kept, so it can continue later)."""
+        """Stop a running download. What was fetched is kept, so that the download can continue later."""
         if self._cancel_event is not None:
             self._cancel_event.set()
 
@@ -174,6 +185,7 @@ class ModelGroup:
         self._cancel_button.set_sensitive(False)
 
     def _download_worker(self, cancel_event: threading.Event, model_id: str) -> None:
+        """Download one model on a worker thread; progress and the result are handed to the main loop via idle_add."""
         try:
             model_store.download(
                 lambda done, total, what: GLib.idle_add(self._on_progress, done, total, what), cancel_event,

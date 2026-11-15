@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/page_selection/preview_dialog.py — Full-size, readable render of a single page.
-"""
+"""Full-size, readable render of a single PDF page."""
+
 from __future__ import annotations
 
 import threading
@@ -18,27 +17,29 @@ from ui.page_selection.rendering import fallback_preview_size, render_page_png, 
 from ui.page_selection.zoom_bar import ZoomBar
 from ui.widgets import dim_label, handler_blocked
 
-# Full-size render width in pixels — high enough that zooming has real detail
-# to zoom into rather than just blowing up a fixed-resolution image.
+# Full-size render width in pixels. It is high enough that zooming reveals real detail instead of just enlarging a
+# fixed-resolution image.
 PREVIEW_WIDTH = 1400
 
 
 class PagePreviewDialog(Adw.Dialog):
-    """
-    A page at full size, with Previous/Next navigation and its own
-    include/exclude checkbox, so a page can actually be read before deciding
-    to keep it.
+    """A page at full size, with Previous/Next navigation and its own include/exclude checkbox.
 
-    :param is_included: callable(index) -> bool, queries the current state.
-    :param on_toggle:   callable(index, included) — reports a change back to
-                        whoever opened this dialog (the page grid).
+    This lets a page be read properly before deciding whether to keep it. Pages are rendered on a worker thread.
+
+    Args:
+        pdf_path: The PDF file to show.
+        index: The zero-based index of the page to open first.
+        page_count: The number of pages in the PDF.
+        is_included: Called with a page index; returns whether that page is currently included.
+        on_toggle: Called with a page index and the new state; reports a change back to whoever opened this dialog
+            (the page grid).
     """
 
     def __init__(self, pdf_path: str, index: int, page_count: int, is_included, on_toggle):
         super().__init__(title=f"Page {index + 1} of {page_count}")
-        # Large enough that a page fits with little scrolling on a typical
-        # laptop screen — not maximized, since a dialog that covers the whole
-        # display is its own kind of annoying.
+        # Large enough that a page fits with little scrolling on a typical laptop screen, but deliberately not
+        # maximized: a dialog that covers the whole display feels intrusive.
         self.set_content_width(920)
         self.set_content_height(940)
 
@@ -47,7 +48,8 @@ class PagePreviewDialog(Adw.Dialog):
         self._page_count = page_count
         self._is_included = is_included
         self._on_toggle = on_toggle
-        self._base_size: tuple[int, int] | None = None   # native pixels of the current render = 100 % zoom
+        # Native pixel size of the current render, which corresponds to 100 % zoom.
+        self._base_size: tuple[int, int] | None = None
 
         toolbar_view = Adw.ToolbarView()
         self.set_child(toolbar_view)
@@ -59,7 +61,7 @@ class PagePreviewDialog(Adw.Dialog):
 
         self._load_page(index)
 
-    # ── Construction ──────────────────────────────────────────────────
+    # --- Construction ---
 
     def _build_stack(self) -> Gtk.Stack:
         self._stack = Gtk.Stack()
@@ -97,25 +99,26 @@ class PagePreviewDialog(Adw.Dialog):
         bar.pack_end(close_button)
         return bar
 
-    # ── Navigation and rendering ──────────────────────────────────────
+    # --- Navigation and rendering ---
 
     def _load_page(self, index: int) -> None:
         self._index = index
         self.set_title(f"Page {index + 1} of {self._page_count}")
         self._prev_button.set_sensitive(index > 0)
         self._next_button.set_sensitive(index < self._page_count - 1)
-        # Only reflecting state here, not changing it — don't report it back.
+        # This only reflects the current state, it does not change it, so it must not be reported back.
         with handler_blocked(self._include_check, self._on_check_toggled):
             self._include_check.set_active(self._is_included(index))
 
-        # Zoom is per page: don't carry a zoomed-in view over to a page that
-        # hasn't been seen yet. Reset silently — the picture is about to be replaced.
+        # Zoom is per page: a zoomed-in view must not carry over to a page that has not been seen yet. The reset does
+        # not notify the zoom callback, because the picture is about to be replaced anyway.
         self._base_size = None
         self._zoom_bar.reset()
         self._stack.set_visible_child_name("loading")
         threading.Thread(target=self._render, args=(index,), daemon=True).start()
 
     def _render(self, index: int) -> None:
+        """Render one page on a worker thread; the result is handed to the main loop via idle_add."""
         try:
             png_bytes = render_page_png(self._pdf_path, index, PREVIEW_WIDTH)
         except Exception as exc:
@@ -125,7 +128,8 @@ class PagePreviewDialog(Adw.Dialog):
 
     def _on_rendered(self, index: int, png_bytes: bytes) -> bool:
         if index != self._index:
-            return GLib.SOURCE_REMOVE       # user already navigated on — discard this stale render
+            # The user has already navigated on, so this render is stale.
+            return GLib.SOURCE_REMOVE
         texture = texture_from_png(png_bytes)
         picture = Gtk.Picture.new_for_paintable(texture) if texture else Gtk.Picture()
         picture.set_content_fit(Gtk.ContentFit.CONTAIN)
@@ -153,7 +157,7 @@ class PagePreviewDialog(Adw.Dialog):
             self._on_toggle(self._index, check.get_active())
 
     def _apply_zoom(self, factor: float) -> None:
-        """Resizes the already-rendered picture — no re-render needed."""
+        """Resize the already-rendered picture to *factor* times its native size, without re-rendering."""
         picture = self._picture_holder.get_child()
         if self._base_size is None or picture is None:
             return

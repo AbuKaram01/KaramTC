@@ -41,7 +41,7 @@ def installed_in_program_files(monkeypatch, tmp_path):
     return str(exe)
 
 
-# -- finding the program ------------------------------------------------------------------------------
+# --- Finding the program ---
 
 def test_windows_looks_where_the_installer_puts_tesseract(windows, installed_in_program_files):
     assert program.windows_install_path() == installed_in_program_files
@@ -87,7 +87,7 @@ def test_winget_is_the_install_command_on_windows(monkeypatch):
     assert install.osd_install_hint() == "Run: winget install UB-Mannheim.TesseractOCR"
 
 
-# -- KaramTC's own copy of tesseract.exe --------------------------------------------------------------------------
+# --- KaramTC's own copy of tesseract.exe ---
 
 @pytest.fixture
 def own_copy(monkeypatch, tmp_path):
@@ -131,11 +131,12 @@ def test_the_own_copy_sits_beside_the_program_and_in_the_data_folder(monkeypatch
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     program_side, data_side = program.bundled_candidates()
     assert program_side.endswith(os.path.join("tesseract", "tesseract.exe"))
-    assert Path(program_side).parent.parent == Path(program.__file__).resolve().parents[3]     # The folder holding src/.
+    # The folder holding src/.
+    assert Path(program_side).parent.parent == Path(program.__file__).resolve().parents[3]
     assert data_side == str(tmp_path / "data" / "io.github.AbuKaram01.KaramTC" / "tesseract" / "tesseract.exe")
 
 
-# -- no console window -----------------------------------------------------------------------------------
+# --- No console window ---
 
 def test_windows_starts_tesseract_without_a_console_window(windows):
     assert program.quiet_window_options() == {"creationflags": 0x08000000}
@@ -174,7 +175,7 @@ def test_listing_languages_uses_the_found_program_and_no_console(windows, instal
     assert asked["options"]["creationflags"] == 0x08000000
 
 
-# -- the screen shown when it is missing ---------------------------------------------------------------------
+# --- The screen shown when it is missing ---
 
 def test_the_missing_tesseract_page_lists_windows():
     pytest.importorskip("gi")
@@ -189,7 +190,7 @@ def test_the_missing_tesseract_page_lists_windows():
     assert ("Windows", "winget install UB-Mannheim.TesseractOCR") in INSTALL_COMMANDS
 
 
-# -- file dialogs ----------------------------------------------------------------------------------------------
+# --- File dialogs ---
 
 def test_a_filter_matches_by_extension_whatever_the_case_and_the_registered_type():
     pytest.importorskip("gi")

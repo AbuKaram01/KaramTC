@@ -1,16 +1,19 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/book/pdf_io.py — Opening PDFs and reading their basic properties.
-"""
+"""Opening PDFs and reading their basic properties."""
+
 from __future__ import annotations
 
 import os
 
 
 def require_fitz():
-    """The PyMuPDF module, or a friendly RuntimeError if it isn't installed."""
+    """Return the PyMuPDF module.
+
+    Raises:
+        RuntimeError: PyMuPDF is not installed. The message tells the user how to install it.
+    """
     try:
         from core.pdf_backend import fitz
     except ImportError:
@@ -19,10 +22,13 @@ def require_fitz():
 
 
 def open_pdf(pdf_path: str):
-    """
-    Opens a PDF with PyMuPDF, raising a friendly RuntimeError for the common
-    failure modes instead of letting a cryptic PyMuPDF exception (or a silently
-    wrong empty-text classification) propagate up to the UI.
+    """Open a PDF with PyMuPDF and return the document.
+
+    The common failure modes are reported as a RuntimeError with a readable message. Otherwise a cryptic PyMuPDF
+    exception, or a silently wrong empty-text classification, would propagate up to the UI.
+
+    Raises:
+        RuntimeError: PyMuPDF is missing, the file cannot be opened or the PDF is password-protected.
     """
     fitz = require_fitz()
     try:
@@ -36,11 +42,10 @@ def open_pdf(pdf_path: str):
 
 
 def pdf_fingerprint(pdf_path: str) -> tuple[int, float] | None:
-    """
-    (size, mtime) of a PDF file, or None if it can't be stat'd.
+    """Return the (size, mtime) of a PDF file, or None if the file cannot be examined.
 
-    Detects whether a file at a saved-progress path has since been replaced by
-    different content, so a resume never runs against the wrong file.
+    The fingerprint detects whether the file at a saved-progress path has since been replaced by different
+    content, so that a resume never runs against the wrong file.
     """
     try:
         stat = os.stat(pdf_path)
@@ -50,6 +55,7 @@ def pdf_fingerprint(pdf_path: str) -> tuple[int, float] | None:
 
 
 def pdf_page_count(pdf_path: str) -> int:
+    """Return the number of pages of the PDF."""
     doc = open_pdf(pdf_path)
     try:
         return doc.page_count
@@ -58,17 +64,15 @@ def pdf_page_count(pdf_path: str) -> int:
 
 
 def page_text(doc, page_index: int) -> str:
-    """The native text of one page of an already-open document."""
+    """Return the native text of one page of an already-open document, stripped of surrounding whitespace."""
     return doc.load_page(page_index).get_text("text").strip()
 
 
 def extract_text_direct(pdf_path: str, page_index: int, doc=None) -> str:
-    """
-    Native selectable text of a single PDF page.
+    """Return the native, selectable text of a single PDF page.
 
-    Pass an already-open *doc* when extracting many pages: opening the PDF
-    again for every page re-parses it each time, which measured ~12x slower
-    on a 1500-page book (and grows with the size of the file).
+    Pass an already-open *doc* when extracting many pages. Opening the PDF again for every page re-parses it each
+    time, which was measured at about 12 times slower on a 1500-page book and grows with the size of the file.
     """
     if doc is not None:
         return page_text(doc, page_index)

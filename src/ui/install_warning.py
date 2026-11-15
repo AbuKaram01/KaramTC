@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""Page shown instead of the tabs when Tesseract is not installed.
+
+The page lists a package-manager command per platform that installs Tesseract.
 """
-ui/install_warning.py — Shown instead of the tabs when Tesseract is not installed.
-"""
+
 from __future__ import annotations
 
 import gi
@@ -14,6 +16,7 @@ from gi.repository import Adw, Gtk
 
 from ui.widgets import command_row, scrolled_clamp, status_page
 
+# (platform name, shell command) pairs, one row per platform on the page.
 INSTALL_COMMANDS = [
     ("Ubuntu / Debian", "sudo apt install tesseract-ocr tesseract-ocr-ara tesseract-ocr-eng"),
     ("Fedora",          "sudo dnf install tesseract tesseract-langpack-ara"),
@@ -24,6 +27,7 @@ INSTALL_COMMANDS = [
 
 
 def build_install_warning_page() -> Gtk.ScrolledWindow:
+    """Build the "Tesseract is not installed" page with the install commands for each platform."""
     scroll, clamp = scrolled_clamp(maximum_size=580, tightening_threshold=400)
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
     clamp.set_child(content)

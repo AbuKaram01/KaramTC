@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/media/model_location.py — Which speech-model folder to use, and whether it is usable.
-"""
+"""Which speech-model folder to use, and whether it is usable."""
 from __future__ import annotations
 
 import glob
@@ -15,12 +13,14 @@ from core.media.constants import SOURCE_CUSTOM
 
 
 class ModelStatus(NamedTuple):
+    """Whether transcription can start with the chosen model, and a sentence for the user saying so."""
+
     ready: bool
     message: str
 
 
 def problems_with_model_dir(path: str) -> list[str]:
-    """What is missing from a faster-whisper (CTranslate2) model folder; empty if it is usable."""
+    """Return what is missing from a faster-whisper (CTranslate2) model folder; empty if it is usable."""
     if not path:
         return ["No folder chosen."]
     if not os.path.isdir(path):
@@ -29,6 +29,7 @@ def problems_with_model_dir(path: str) -> list[str]:
         f"{name} is missing" for name in ("model.bin", "config.json")
         if not os.path.isfile(os.path.join(path, name))
     ]
+    # glob.escape() makes a folder name that contains wildcard characters ([, *, ?) match literally.
     has_vocabulary = (
         os.path.isfile(os.path.join(path, "tokenizer.json"))
         or glob.glob(os.path.join(glob.escape(path), "vocabulary.*"))
@@ -39,9 +40,13 @@ def problems_with_model_dir(path: str) -> list[str]:
 
 
 def model_status(source: str, custom_dir: str, model_id: str | None = None) -> ModelStatus:
-    """Whether transcription can start with this choice, and a sentence saying so.
+    """Return whether transcription can start with this choice, and a sentence saying so.
 
-    *model_id* is which downloadable model is chosen (the default one if not given)."""
+    Args:
+        source: SOURCE_MANAGED (the model KaramTC downloads) or SOURCE_CUSTOM (a folder the user chose).
+        custom_dir: The folder of the custom model; used only with SOURCE_CUSTOM.
+        model_id: Which downloadable model is chosen (the default one if not given); used only with SOURCE_MANAGED.
+    """
     if source == SOURCE_CUSTOM:
         problems = problems_with_model_dir(custom_dir)
         if problems:

@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/formatting.py — Human-readable sizes and durations.
-"""
+"""Human-readable sizes and durations for labels and status text."""
+
 from __future__ import annotations
 
 _KB, _MB, _GB = 1024, 1024**2, 1024**3
 
 
 def format_bytes(size: int) -> str:
+    """Format a byte count as GB or MB with one decimal, or as whole KB below one megabyte."""
     if size >= _GB:
         return f"{size / _GB:.1f} GB"
     if size >= _MB:
@@ -18,7 +18,7 @@ def format_bytes(size: int) -> str:
 
 
 def format_duration(seconds: float) -> str:
-    """H:MM:SS, or M:SS under an hour."""
+    """Format *seconds* as H:MM:SS, or as M:SS under an hour."""
     total = max(0, int(seconds))
     hours, rest = divmod(total, 3600)
     minutes, secs = divmod(rest, 60)
@@ -26,7 +26,7 @@ def format_duration(seconds: float) -> str:
 
 
 def format_remaining(seconds: float) -> str:
-    """A rough time left, for an ETA: "under a minute", "about 5 min", "about 1 h 20 min"."""
+    """Format *seconds* as a rough time left for an ETA: "under a minute", "about 5 min", "about 1 h 20 min"."""
     minutes = round(seconds / 60)
     if seconds < 60:
         return "under a minute"

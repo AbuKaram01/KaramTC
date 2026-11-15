@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-providers/tesseract/command.py — Builds the `tesseract` command line.
-"""
+"""Build the `tesseract` command line."""
+
 from __future__ import annotations
 
 from providers.ocr_types import TESSERACT_TOGGLE_VARIABLES, OcrOptions
@@ -12,11 +11,10 @@ from providers.tesseract.options import normalize_oem
 
 
 def parse_custom_params(raw: str) -> list[tuple[str, str]]:
-    """
-    Parses a free-text "key=value" list into (key, value) pairs, one -c flag
-    each. Entries may be separated by semicolons and/or newlines; blank or
-    malformed entries are skipped rather than raising, since this is
-    user-typed advanced config, not a machine-generated format.
+    """Parse a free-text "key=value" list into (key, value) pairs, one -c flag each.
+
+    Entries may be separated by semicolons and/or newlines. Blank or malformed entries are skipped rather than
+    raising, since this is user-typed advanced config, not a machine-generated format.
     """
     pairs: list[tuple[str, str]] = []
     for chunk in (raw or "").replace("\n", ";").split(";"):
@@ -28,15 +26,15 @@ def parse_custom_params(raw: str) -> list[tuple[str, str]]:
 
 
 def _flag(variable: str, value) -> list[str]:
+    """Return the arguments that set one Tesseract config variable."""
     return ["-c", f"{variable}={value}"]
 
 
 def _output_format_flags(options: OcrOptions) -> list[str]:
-    # Output formats are requested through -c tessedit_create_* flags, not
-    # positional configfile names ("txt tsv pdf"): those named configfiles
-    # live under <tessdata-dir>/configs/, which doesn't exist in a custom
-    # --tessdata-dir holding only downloaded .traineddata files, and Tesseract
-    # would then silently skip the requested formats.
+    # Output formats are requested through -c tessedit_create_* flags, not through positional configfile names
+    # ("txt tsv pdf"). Those named configfiles live under <tessdata-dir>/configs/, which does not exist in a custom
+    # --tessdata-dir holding only downloaded .traineddata files, and Tesseract would then silently skip the requested
+    # formats.
     flags = _flag("tessedit_create_txt", 1)
     if options.want_confidence:
         flags += _flag("tessedit_create_tsv", 1)
@@ -65,11 +63,11 @@ def _custom_param_flags(options: OcrOptions) -> list[str]:
 
 
 def build_command(image_path: str, output_base: str, lang: str, psm: int, options: OcrOptions) -> list[str]:
-    """
-    The full tesseract command for one image. Custom parameters come last on
-    purpose: a value typed there for a variable that also has its own toggle
-    (e.g. "chop_enable=0" to force it off, which the toggle alone can't
-    express) wins, because Tesseract uses the last -c value it sees.
+    """Return the full tesseract command for one image.
+
+    Custom parameters come last on purpose: a value typed there for a variable that also has its own toggle (e.g.
+    "chop_enable=0" to force it off, which the toggle alone cannot express) wins, because Tesseract uses the last -c
+    value it sees.
     """
     command = [
         program.program(), image_path, output_base,

@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""The Image tab's "choose an image" screen.
+
+The form moves through three states: the empty state, the chosen image with its language and Extract button, and
+the running state with a progress spinner.
 """
-ui/image_tab/form.py — The Image tab's "choose an image" screen.
-"""
+
 from __future__ import annotations
 
 import gi
@@ -19,12 +22,26 @@ from ui.widgets import (
     pill_button, scrolled_clamp, status_page,
 )
 
+# Spinner label shown until the worker reports something more specific.
 _DEFAULT_PROGRESS_MESSAGE = "Extracting\u2026"
 
 
 class ImageForm:
-    """Empty state → file info + language + Extract button → progress spinner.
-    Put `widget` (a scrolled page) into the tab."""
+    """The screen on which an image is chosen and extraction is started.
+
+    The state moves from the empty state, to the file info with the language row and the Extract button, to the
+    progress spinner. Put ``widget`` (a scrolled page) into the tab.
+
+    Args:
+        on_choose_image: Called when the user asks to open or change the image.
+        on_extract: Called when the Extract button is pressed.
+        on_open_settings: Called when the OCR Settings gear of the language row is pressed.
+        on_drop: Drop-target handler for files dropped onto the page.
+
+    Attributes:
+        widget: The scrolled page that holds the whole form.
+        language: The language selector, so that the tab can read and refresh it.
+    """
 
     def __init__(self, on_choose_image, on_extract, on_open_settings, on_drop):
         self.widget, clamp = scrolled_clamp(maximum_size=580, tightening_threshold=400)
@@ -39,7 +56,7 @@ class ImageForm:
         self._build_extract_button(content, on_extract)
         self._build_progress(content)
 
-    # ── Construction ──────────────────────────────────────────────────
+    # --- Construction ---
 
     def _build_empty_state(self, content: Gtk.Box, on_choose_image) -> None:
         self._intro = status_page(
@@ -71,7 +88,7 @@ class ImageForm:
         content.append(self._file_group)
 
         self._file_row = Adw.ActionRow()
-        self._file_row.set_use_markup(False)        # file names may contain & or <
+        self._file_row.set_use_markup(False)  # File names may contain "&" or "<".
         self._file_row.set_title("\u2014")
         self._file_row.add_prefix(make_icon_prefix("image-x-generic-symbolic"))
         self._file_row.add_suffix(flat_text_button("Change", on_choose_image))
@@ -101,10 +118,10 @@ class ImageForm:
         self._progress_box.append(self._progress_label)
         content.append(self._progress_box)
 
-    # ── State ─────────────────────────────────────────────────────────
+    # --- State ---
 
     def show_image(self, name: str, size_text: str, preview_texture) -> None:
-        """Shows the chosen image's details; *preview_texture* is None if it couldn't be previewed."""
+        """Show the chosen image's details; *preview_texture* is None if it could not be previewed."""
         self._file_row.set_subtitle(size_text)
         self._file_row.set_title(name)
         if preview_texture is not None:
@@ -116,6 +133,7 @@ class ImageForm:
         self._extract_button.set_visible(True)
 
     def clear(self) -> None:
+        """Return to the empty state."""
         self._file_row.set_title("\u2014")
         self._file_row.set_subtitle("")
         self._preview_picture.set_paintable(None)
@@ -127,9 +145,11 @@ class ImageForm:
         self._extract_button.set_sensitive(False)
 
     def set_extract_enabled(self, enabled: bool) -> None:
+        """Enable or disable the Extract button."""
         self._extract_button.set_sensitive(enabled)
 
     def show_progress(self, running: bool) -> None:
+        """Show or hide the progress spinner; hiding it also restores the default message."""
         self._progress_box.set_visible(running)
         if running:
             self._spinner.start()
@@ -138,4 +158,5 @@ class ImageForm:
             self._progress_label.set_text(_DEFAULT_PROGRESS_MESSAGE)
 
     def set_progress_message(self, message: str) -> None:
+        """Set the text next to the progress spinner."""
         self._progress_label.set_text(message)

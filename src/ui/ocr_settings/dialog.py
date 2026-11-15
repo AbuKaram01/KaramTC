@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/ocr_settings/dialog.py — The shared "OCR Settings" dialog.
+"""The shared "OCR Settings" dialog.
 
-Opened from the main menu, Ctrl+, and a gear button on each tab. Everything
-is persisted through settings.py, so both tabs always read the same engine
-configuration — there is one OCR engine, not a per-tab one.
+The dialog is opened from the main menu, with Ctrl+, and from a gear button on each tab. Everything is persisted
+through settings.py, so both tabs always read the same engine configuration: there is one OCR engine, not a per-tab
+one.
 """
+
 from __future__ import annotations
 
 import gi
@@ -26,10 +26,14 @@ _open_dialog: OcrSettingsDialog | None = None
 
 
 def present_ocr_settings(parent, on_changed=None) -> None:
-    """
-    Opens the shared OCR Settings dialog over *parent*, unless one is already
-    open. Every entry point goes through here, so a keyboard shortcut pressed
-    while the dialog is showing can't stack a second copy on top of it.
+    """Open the shared OCR Settings dialog over *parent*, unless one is already open.
+
+    Every entry point goes through here, so a keyboard shortcut pressed while the dialog is showing cannot stack a
+    second copy on top of it.
+
+    Args:
+        parent: The widget the dialog is presented over.
+        on_changed: Optional callback, passed on to the dialog (see OcrSettingsDialog).
     """
     global _open_dialog
     if _open_dialog is not None:
@@ -46,20 +50,19 @@ def present_ocr_settings(parent, on_changed=None) -> None:
 
 
 class OcrSettingsDialog(Adw.PreferencesDialog):
-    """Language source, performance, page images and the recognition engine."""
+    """Preferences dialog for the language source, performance, page images and the recognition engine.
+
+    Args:
+        on_changed: Called without arguments whenever a change here could affect which languages are available to
+            select: the language source changed, or a language was downloaded or deleted in the manager. The opening
+            tab uses it to refresh its language combo.
+    """
 
     def __init__(self, on_changed=None):
-        """
-        :param on_changed: called (no arguments) whenever a change here could
-            affect which languages are available to select — the language
-            source changed, or a language was downloaded/deleted in the
-            manager. The opening tab uses it to refresh its language combo.
-        """
         super().__init__(title="OCR Settings")
         self.set_search_enabled(False)
-        # A bit wider/taller than the libadwaita default: this dialog grew a lot
-        # once the Tesseract Options group was added, and the page still scrolls
-        # internally for anything beyond this.
+        # Larger than the libadwaita default because the dialog grew considerably once the Tesseract Options group
+        # was added. The page still scrolls internally for anything beyond this size.
         self.set_content_width(560)
         self.set_content_height(720)
         self._on_changed = on_changed

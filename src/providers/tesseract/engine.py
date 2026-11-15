@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-providers/tesseract/engine.py — ocr(): the provider entry point.
-"""
+"""The provider entry point: ocr()."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -23,16 +22,22 @@ from providers.tesseract.process import run_tesseract
 
 
 def ocr(image_path: str, lang: str, progress_cb=None, cancel_event=None, options=None) -> OcrResult:
-    """
-    Runs Tesseract OCR on one image file (the registry's provider interface).
+    """Run Tesseract OCR on one image file (the registry's provider interface).
 
-    :param lang:         Language code, e.g. "ara" or "ara+eng" (default if empty).
-    :param progress_cb:  Optional callback receiving status messages.
-    :param cancel_event: Optional threading.Event, polled while Tesseract runs
-                         so Stop kills the process promptly.
-    :param options:      Optional OcrOptions (engine mode, page segmentation,
-                         custom -c parameters, alternate tessdata dir, whether
-                         to also produce a confidence score / searchable PDF).
+    Args:
+        image_path: The image file to read.
+        lang: Language code, e.g. "ara" or "ara+eng"; DEFAULT_LANG if empty.
+        progress_cb: Optional callback receiving status messages.
+        cancel_event: Optional threading.Event, polled while Tesseract runs so that Stop kills the process promptly.
+        options: Optional OcrOptions (engine mode, page segmentation, custom -c parameters, alternate tessdata dir,
+            whether to also produce a confidence score and a searchable PDF).
+
+    Returns:
+        The recognized text, with the confidence and the PDF bytes if the options asked for them.
+
+    Raises:
+        RuntimeError: Tesseract is not installed, or a setup problem such as missing language data (see failures).
+        OcrPageError: OCR failed for this one image (timeout, crash or unreadable image).
     """
     options = options or OcrOptions()
     if not is_installed():

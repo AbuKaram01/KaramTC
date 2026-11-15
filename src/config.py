@@ -1,50 +1,54 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-config.py — Application-wide constants and default settings.
-"""
+"""Application-wide constants, default settings and the locations of the per-user folders."""
+
 from __future__ import annotations
 
 import os
 import sys
 
-# ── Application identifiers ───────────────────────────────────────────
+# --- Application identifiers ---
 APP_ID   = "io.github.AbuKaram01.KaramTC"
 APP_NAME = "KaramTC"
 VERSION  = "0.1.0"
 
-# ── Supported image formats ───────────────────────────────────────────
+# --- Supported input formats ---
 SUPPORTED_MIME = ("image/jpeg", "image/png", "image/webp")
 SUPPORTED_EXT  = (".jpg", ".jpeg", ".png", ".webp")
 
 PDF_SUPPORTED_EXT       = (".pdf",)
-BOOK_IMAGE_DPI          = 200   # default; user-adjustable in OCR Settings (pdf_image_dpi)
-BOOK_IMAGE_JPEG_QUALITY = 85    # default; user-adjustable in OCR Settings (pdf_jpeg_quality)
+# Defaults for the resolution and JPEG quality of the page images rendered from a PDF. Both are adjustable by the
+# user in the OCR settings (pdf_image_dpi and pdf_jpeg_quality).
+BOOK_IMAGE_DPI          = 200
+BOOK_IMAGE_JPEG_QUALITY = 85
 
-# Accepted ranges for the two settings above (inclusive). Values outside them —
-# e.g. from a hand-edited settings.json — are clamped, never trusted.
+# Accepted ranges (inclusive) for the two settings above. Values outside them, for example from a hand-edited
+# settings.json, are clamped and never trusted.
 BOOK_IMAGE_DPI_RANGE          = (100, 600)
 BOOK_IMAGE_JPEG_QUALITY_RANGE = (50, 100)
 
-# ── Provider identifiers ──────────────────────────────────────────────
+# --- Provider identifiers ---
 PROVIDER_TESSERACT = "tesseract"
 
 
-# ── Where the user's folders are ──────────────────────────────────────
+# --- Per-user folders ---
 def _on_windows() -> bool:
     return sys.platform == "win32"
 
 
 def fallback_base_dir(kind: str) -> str:
-    """
-    The folder GLib would report for *kind* ("data" or "config"), worked out
-    without GLib, for when GTK cannot be imported (the tests that run without
-    it, a console-less start that has not found the runtime yet).
+    """Return the folder GLib would report for *kind* ("data" or "config"), computed without GLib.
 
-    Windows: %LOCALAPPDATA% for data and %APPDATA% for settings (where GLib puts
-    them). Elsewhere: the XDG defaults, ~/.local/share and ~/.config. The
-    XDG_*_HOME variables are not read here; callers that honour them do so first.
+    This is the fallback for when GTK cannot be imported: tests that run without it, or a console-less start that
+    has not located the runtime yet.
+
+    On Windows the data folder is %LOCALAPPDATA% and the settings folder is %APPDATA%, which is where GLib puts
+    them. Elsewhere the XDG defaults ~/.local/share and ~/.config apply. The XDG_*_HOME variables are not read
+    here; callers that honour them do so before calling this function.
+
+    Raises:
+        ValueError: *kind* is neither "data" nor "config".
     """
     if kind not in ("data", "config"):
         raise ValueError(f"unknown kind of folder: {kind!r}")
@@ -58,13 +62,13 @@ def fallback_base_dir(kind: str) -> str:
     return os.path.join(home, ".config")
 
 
-# ── Where downloaded data lives ───────────────────────────────────────
+# --- Downloaded data ---
 def user_data_dir() -> str:
-    """
-    The folder for data the app downloads or generates (OCR language packs,
-    the speech model, saved transcription progress): the XDG data directory
-    plus the application id. Resolved lazily so GTK need not be imported at
-    module load time.
+    """Return the folder for data the app downloads or generates, below the XDG data directory.
+
+    This covers the OCR language packs, the speech model and the saved transcription progress. The folder is the
+    XDG data directory plus the application id. It is resolved lazily so that GTK need not be imported when this
+    module is loaded.
     """
     try:
         from gi.repository import GLib

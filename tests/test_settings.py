@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""The settings store: round trips, type checks, damaged files and a settings folder that cannot be written."""
+
 import json
 
 import pytest

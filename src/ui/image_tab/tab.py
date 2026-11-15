@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""The Image tab: one picture in, its text out.
+
+The tab switches between the form (choose an image, pick a language, extract) and the result view. OCR runs in a
+worker thread; its outcome is handed back to the GTK main loop with GLib.idle_add.
 """
-ui/image_tab/tab.py — The Image tab: one picture in, its text out.
-"""
+
 from __future__ import annotations
 
 import os
@@ -22,19 +25,23 @@ from ui.image_tab.form import ImageForm
 from ui.image_tab.preview import build_preview_texture
 from ui.image_tab.result_view import ImageResultView
 
+# Pages of the tab's stack.
 _FORM, _RESULT = "form", "result"
 _BUSY_MESSAGE = "An extraction is already running \u2014 wait for it to finish"
 _NOT_LOCAL_MESSAGE = "Only local files are supported"
 
 
 class ImageTab(Gtk.Stack):
+    """The Image tab: choose one image, run OCR on it, then copy or save the text.
+
+    Args:
+        on_open_settings: Called when the OCR Settings gear is pressed.
+        on_busy_changed: Called whenever an extraction starts or ends, so that the window can lock OCR Settings
+            meanwhile.
+        show_toast: Shows a short message (the window owns the toast overlay).
+    """
+
     def __init__(self, on_open_settings, on_busy_changed, show_toast):
-        """
-        :param on_open_settings: called when the OCR Settings gear is pressed.
-        :param on_busy_changed:  called whenever an extraction starts or ends,
-                                 so the window can lock OCR Settings meanwhile.
-        :param show_toast:       shows a short message (the window owns the overlay).
-        """
         super().__init__()
         self._on_busy_changed = on_busy_changed
         self._show_toast = show_toast
@@ -54,19 +61,22 @@ class ImageTab(Gtk.Stack):
         self.add_named(self._result, _RESULT)
         self._update_extract_button()
 
-    # ── Public interface (used by the main window) ────────────────────
+    # --- Public interface (used by the main window) ---
 
     def is_busy(self) -> bool:
+        """Whether an extraction is running."""
         return self._extracting
 
     def set_settings_enabled(self, enabled: bool) -> None:
+        """Enable or disable the OCR Settings gear of the language row."""
         self._form.language.set_settings_enabled(enabled)
 
     def refresh_languages(self) -> None:
+        """Re-read the available languages, after OCR Settings changed them."""
         self._form.language.refresh()
         self._update_extract_button()
 
-    # ── Choosing an image ─────────────────────────────────────────────
+    # --- Choosing an image ---
 
     def _on_drop(self, _target, value, _x, _y) -> bool:
         if self._extracting:
@@ -94,7 +104,7 @@ class ImageTab(Gtk.Stack):
         )
 
     def _on_new_image(self, *_) -> None:
-        """Same flow as the PDF tab's 'New book': straight to the chooser."""
+        """Start over with a file chooser, as the PDF tab's "New book" does."""
         self._reset()
         self._on_choose_image()
 
@@ -110,10 +120,11 @@ class ImageTab(Gtk.Stack):
         try:
             preview = build_preview_texture(path)
         except Exception:
+            # A preview that cannot be built is not fatal: the image can still be extracted without one.
             preview = None
         self._form.show_image(os.path.basename(path), self._size_text(path), preview)
         self._update_extract_button()
-        # Make sure we're looking at the form, not a stale result from before
+        # Make sure the form is showing, not a stale result from a previous image.
         self.set_visible_child_name(_FORM)
 
     @staticmethod
@@ -121,15 +132,14 @@ class ImageTab(Gtk.Stack):
         try:
             return f"{os.path.getsize(path) // 1024} KB"
         except OSError:
-            # The file could have vanished (unplugged drive, network hiccup, deleted
-            # externally) between being picked and landing here — show no size
-            # rather than crashing out of the whole selection flow.
+            # The file could have vanished (unplugged drive, network hiccup, deleted externally) between being
+            # picked and landing here: show no size rather than crashing out of the whole selection flow.
             return ""
 
     def _update_extract_button(self) -> None:
         self._form.set_extract_enabled(self._form.language.has_languages and bool(self._image_path))
 
-    # ── OCR extraction ────────────────────────────────────────────────
+    # --- OCR extraction ---
 
     def _on_extract(self, *_) -> None:
         if not self._image_path or not self._form.language.has_languages or self._extracting:
@@ -140,16 +150,15 @@ class ImageTab(Gtk.Stack):
         self._form.show_progress(True)
         lang = self._form.language.selected_code()
         app_settings.set(saved_settings.LAST_OCR_LANG, lang)
-        # The image path is passed along (not re-read later): if the user somehow
-        # picks a different image before this finishes, the worker must still
-        # finish processing the one that was actually selected here.
+        # The image path is passed to the worker instead of being re-read later: should a different image become
+        # selected before this finishes, the worker must still process the one that was selected here.
         threading.Thread(target=self._worker, args=(self._image_path, lang), daemon=True).start()
 
     def _worker(self, image_path: str, lang: str) -> None:
+        """Run OCR on a worker thread; the outcome goes back to the main loop through GLib.idle_add."""
         try:
-            # Always ask for a confidence score and a searchable-PDF sidecar — both
-            # come out of the same Tesseract invocation as the plain text, so
-            # there's no extra cost for a single image.
+            # Always ask for a confidence score and a searchable-PDF sidecar: both come out of the same Tesseract
+            # invocation as the plain text, so they cost nothing extra for a single image.
             options = saved_settings.build_ocr_options(want_pdf=True, want_confidence=True)
             result = run_ocr(
                 image_path, PROVIDER_TESSERACT, lang, progress_cb=self._report_progress, options=options,
@@ -159,6 +168,7 @@ class ImageTab(Gtk.Stack):
             GLib.idle_add(self._on_ocr_done, None, str(exc))
 
     def _report_progress(self, message: str) -> None:
+        """Forward a progress message from the worker thread to the main loop."""
         GLib.idle_add(self._form.set_progress_message, message)
 
     def _on_ocr_done(self, result, error: str | None) -> bool:
@@ -177,7 +187,7 @@ class ImageTab(Gtk.Stack):
             self.set_visible_child_name(_RESULT)
         return GLib.SOURCE_REMOVE
 
-    # ── Copy / save ───────────────────────────────────────────────────
+    # --- Copy / save ---
 
     def _suggested_name(self, suffix: str) -> str | None:
         if not self._image_path:

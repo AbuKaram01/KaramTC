@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""Top-level GTK/Adwaita application class.
+
+``OcrApp`` registers the application-wide actions and shortcuts and owns the single main window.
 """
-ui/app.py — OcrApp: the top-level GTK/Adwaita application class.
-"""
+
 from __future__ import annotations
 
 import gi
@@ -18,6 +20,7 @@ from ui.main_window import OcrWindow
 
 
 class OcrApp(Adw.Application):
+    """The Adw.Application of KaramTC: opens the main window and handles the global actions."""
 
     def __init__(self):
         super().__init__(
@@ -38,19 +41,18 @@ class OcrApp(Adw.Application):
         self.set_accels_for_action("win.ocr-settings", ["<primary>comma"])
 
     def _on_activate(self, app):
-        # Launching the app again (e.g. clicking its icon while it is already
-        # open) activates this same process: bring the existing window forward
-        # instead of opening a second, independent one.
+        # Launching the app again (for example by clicking its icon while it is already open) activates this same
+        # process: bring the existing window forward instead of opening a second, independent one.
         window = app.get_active_window() or OcrWindow(application=app)
         window.present()
 
     def _on_shutdown(self, *_):
         # Quitting with Ctrl+Q closes no window, so the window never gets its close request:
-        # remember where the user left it here as well.
+        # save the window state here as well.
         for window in self.get_windows():
             if isinstance(window, OcrWindow):
                 window.save_window_state()
-        # Don't leave Tesseract processes running after the app has quit.
+        # Do not leave Tesseract processes running after the app has quit.
         tesseract.terminate_active_processes()
 
     def _on_about(self, *_):

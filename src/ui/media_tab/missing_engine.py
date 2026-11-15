@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""Page shown instead of the Audio/Video tab when faster-whisper is not installed.
+
+The page lists the pip commands that install it and a button to check again.
 """
-ui/media_tab/missing_engine.py — Shown instead of the tab when faster-whisper is not installed.
-"""
+
 from __future__ import annotations
 
 import gi
@@ -14,9 +16,10 @@ from gi.repository import Adw, Gtk
 
 from ui.widgets import centered_row, command_row, pill_button, scrolled_clamp, status_page
 
-# PyAV 19 removed an argument faster-whisper 1.2 still passes when it opens
-# audio, so the newest PyAV breaks decoding until faster-whisper catches up.
+# The upper bound on "av" is deliberate: PyAV 19 removed an argument that faster-whisper 1.2 still passes when it
+# opens audio, so the newest PyAV breaks decoding until faster-whisper catches up.
 _PACKAGES = '"faster-whisper>=1.1,<2" "av>=11,<19"'
+# (situation, shell command) pairs, one row per way of installing the packages.
 INSTALL_COMMANDS = [
     ("From a source checkout", f".venv/bin/pip install {_PACKAGES}"),
     ("Installed from a package", f"pip install --user --break-system-packages {_PACKAGES}"),
@@ -25,6 +28,7 @@ INSTALL_COMMANDS = [
 
 
 def build_engine_missing_page(on_recheck) -> Gtk.ScrolledWindow:
+    """Build the "speech engine isn't installed" page; *on_recheck* is called by its "Check again" button."""
     scroll, clamp = scrolled_clamp(maximum_size=580, tightening_threshold=400)
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
     clamp.set_child(content)

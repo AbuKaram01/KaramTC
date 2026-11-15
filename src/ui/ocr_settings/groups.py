@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/ocr_settings/groups.py — Language source, performance and page-image groups of OCR Settings.
+"""Language source, performance and page-image groups of the OCR Settings dialog.
 
 Every control saves its value as soon as it changes.
 """
+
 from __future__ import annotations
 
 import gi
@@ -27,19 +27,21 @@ from providers.tesseract import (
 from ui import saved_settings
 from ui.widgets import flat_text_button, make_icon_prefix, string_list
 
+# Language source ids in the order of the combo row: the system packages first, then one entry per quality tier.
 SOURCE_IDS = [SYSTEM_LANG_SOURCE] + [tier for tier, _label in tessdata_manager.QUALITY_TIERS]
 _SYSTEM_SOURCE_DESCRIPTION = "Uses tesseract-ocr-<lang> packages already installed via apt / dnf / pacman / brew"
 _CPU_USAGE_IDS = [value for value, _label in CPU_USAGE_OPTIONS]
 
 
 class LanguageSourceGroup:
-    """Where Tesseract loads language files from, and the way into the download manager."""
+    """Preferences group for where Tesseract loads language files from, and the way into the download manager.
+
+    Args:
+        on_source_changed: Called with the new source id after it was saved.
+        on_manage: Called without arguments to open the language manager.
+    """
 
     def __init__(self, on_source_changed, on_manage):
-        """
-        :param on_source_changed: called with the new source id after it was saved.
-        :param on_manage:         called (no arguments) to open the language manager.
-        """
         self._on_source_changed = on_source_changed
         self.group = Adw.PreferencesGroup(
             title="Language data", description="Where Tesseract loads language files from",
@@ -70,6 +72,7 @@ class LanguageSourceGroup:
 
     @property
     def selected_source(self) -> str:
+        """The id of the selected language source: SYSTEM_LANG_SOURCE or a quality tier."""
         return SOURCE_IDS[self._combo.get_selected()]
 
     def _on_selected(self, _row, _param) -> None:
@@ -94,7 +97,7 @@ class LanguageSourceGroup:
 
 
 def describe_cpu_usage(usage: str, cores: int) -> str:
-    """The explanation shown under the CPU usage choice, for this machine."""
+    """Return the explanation shown under the CPU usage choice, worded for a machine with *cores* cores."""
     threads = threads_for_usage(usage, cores)
     plural = "core" if cores == 1 else "cores"
     if usage == "low":
@@ -109,6 +112,8 @@ def describe_cpu_usage(usage: str, cores: int) -> str:
 
 
 class PerformanceGroup:
+    """Preferences group for how much of the processor OCR may use."""
+
     def __init__(self):
         self.group = Adw.PreferencesGroup(
             title="Performance",
@@ -140,7 +145,7 @@ class PerformanceGroup:
 
 
 class PageImagesGroup:
-    """How scanned PDF pages are rendered to images before OCR."""
+    """Preferences group for how scanned PDF pages are rendered to images before OCR."""
 
     def __init__(self):
         self.group = Adw.PreferencesGroup(

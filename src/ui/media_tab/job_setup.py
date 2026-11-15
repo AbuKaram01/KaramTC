@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/media_tab/job_setup.py — Turning the Audio/Video tab's state into a job to run.
+"""Turning the Audio/Video tab's state into a job to run.
 
-Plain functions, no widgets.
+The module contains plain functions and no widgets.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -16,24 +16,26 @@ from ui import saved_settings
 
 
 def problem_blocking_start(model_ready: bool, model_message: str) -> str | None:
-    """Why transcription can't start right now (a message for the user), or None."""
+    """Return why transcription cannot start right now (a message for the user), or None."""
     if not model_ready:
         return f"{model_message} — open Speech Settings to set it up"
     return None
 
 
 def output_folder_is_usable(folder: str) -> bool:
-    """Creates *folder* if needed; True if files can be written into it."""
+    """Create *folder* if needed and return whether files can be written into it."""
     with contextlib.suppress(OSError):
         os.makedirs(folder, exist_ok=True)
     return os.path.isdir(folder) and os.access(folder, os.W_OK | os.X_OK)
 
 
 def build_request(media_path: str, output_dir: str | None, options) -> MediaRequest:
-    """
-    Snapshots everything the worker needs.
+    """Capture everything the worker needs in a MediaRequest.
 
-    :param options: the tab's MediaOptions (language, format, timestamps).
+    Args:
+        media_path: The recording to transcribe.
+        output_dir: The folder for the transcript, or None to save next to the recording.
+        options: The tab's MediaOptions (language, format, text layout, timestamps).
     """
     settings = MediaSettings(
         language=options.language,

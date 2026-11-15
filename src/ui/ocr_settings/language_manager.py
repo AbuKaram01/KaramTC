@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/ocr_settings/language_manager.py — Download / delete language packs for one quality tier.
-"""
+"""Dialog for downloading and deleting the language packs of one quality tier."""
+
 from __future__ import annotations
 
 import threading
@@ -21,18 +20,25 @@ from providers.tesseract import LANG_NAMES, psm_needs_osd
 from ui import saved_settings
 from ui.widgets import clear_children, flat_icon_button
 
-# Downloadable support files that are not OCR languages, so they aren't in
-# LANG_NAMES but still need a readable name in rows and toasts.
+# Downloadable support files that are not OCR languages. They are not in LANG_NAMES but still need a readable name in
+# rows and toasts.
 _SUPPORT_NAMES = {tessdata_manager.OSD_CODE: "Orientation and script detection"}
 _LIST_MIN_HEIGHT = 420
 
 
 def display_name(code: str) -> str:
+    """Return the readable name of a language or support-file code, or the code itself if it has none."""
     return LANG_NAMES.get(code) or _SUPPORT_NAMES.get(code, code)
 
 
 class PackRow:
-    """One downloadable item in the list: a language, or the osd file."""
+    """One downloadable item in the list: a language, or the orientation and script detection (osd) file.
+
+    Args:
+        code: The traineddata code of the item.
+        on_download: Called with this row when its download button is pressed.
+        on_delete: Called with this row when its delete button is pressed.
+    """
 
     def __init__(self, code: str, on_download, on_delete):
         self.code = code
@@ -43,9 +49,8 @@ class PackRow:
         self._action_row = Adw.ActionRow()
         self._action_row.set_title(display_name(code))
         self._action_row.set_subtitle(code)
-        # One box added once as the suffix, whose *children* are swapped on
-        # refresh — simpler and more robust than adding/removing widgets on
-        # the ActionRow itself.
+        # One box is added once as the suffix and its children are swapped on refresh. This is simpler and more robust
+        # than adding and removing suffix widgets on the ActionRow itself.
         self._suffix = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._suffix.set_valign(Gtk.Align.CENTER)
         self._action_row.add_suffix(self._suffix)
@@ -55,9 +60,21 @@ class PackRow:
         self.list_row.set_activatable(False)
 
     def matches(self, query: str) -> bool:
+        """Return whether the lower-case *query* occurs in the row's title or subtitle."""
         return query in f"{self._action_row.get_title()} {self._action_row.get_subtitle()}".lower()
 
     def refresh(self, quality: str, downloading: bool, another_download_active: bool) -> None:
+        """Rebuild the suffix controls to match the state of the item.
+
+        The suffix shows the progress while downloading, a delete button once the item is installed, and a download
+        button otherwise.
+
+        Args:
+            quality: The quality tier the item is looked up in.
+            downloading: Whether this row is the one being downloaded.
+            another_download_active: Whether a download of another row is running; the download button is then
+                disabled, because only one download runs at a time.
+        """
         clear_children(self._suffix)
         self._progress_label = None
         if downloading:
@@ -68,6 +85,7 @@ class PackRow:
             self._show_download_button(enabled=not another_download_active)
 
     def set_progress(self, percent) -> None:
+        """Show the download progress in percent; None means that the total size is unknown."""
         if self._progress_label is not None:
             self._progress_label.set_text(f"{percent}%" if percent is not None else "\u2026")
 
@@ -92,7 +110,12 @@ class PackRow:
 
 
 class LanguageManagerDialog(Adw.PreferencesDialog):
-    """Download / delete individual language packs for one quality tier."""
+    """Preferences dialog for downloading and deleting individual language packs of one quality tier.
+
+    Args:
+        quality: The quality tier whose language packs are managed.
+        on_changed: Called without arguments after a language (not a support file) was downloaded or deleted.
+    """
 
     def __init__(self, quality: str, on_changed=None):
         super().__init__(title=f"Manage Languages \u2014 {quality.capitalize()}")
@@ -108,7 +131,7 @@ class LanguageManagerDialog(Adw.PreferencesDialog):
         self._add_search_group(page)
         self._add_language_list(page)
 
-    # ── Construction ──────────────────────────────────────────────────
+    # --- Construction ---
 
     def _new_row(self, code: str) -> PackRow:
         row = PackRow(code, self._on_download, self._on_delete)
@@ -117,9 +140,11 @@ class LanguageManagerDialog(Adw.PreferencesDialog):
         return row
 
     def _add_orientation_group(self, page: Adw.PreferencesPage) -> None:
-        """osd.traineddata isn't a language, so it gets its own small group
-        (outside the searchable list) with the same download/delete controls.
-        Needed by the "+ OSD" page segmentation modes."""
+        """Add the group for osd.traineddata.
+
+        The file is not a language, so it gets its own small group outside the searchable list, with the same
+        download and delete controls. It is needed by the "+ OSD" page segmentation modes.
+        """
         group = Adw.PreferencesGroup(
             title="Orientation detection",
             description="Used by the \u201cAuto + OSD\u201d and \u201cSparse text + OSD\u201d modes in OCR Settings",
@@ -166,7 +191,7 @@ class LanguageManagerDialog(Adw.PreferencesDialog):
         row = self._rows.get(list_row)
         return not query or row is None or row.matches(query)
 
-    # ── Download / delete ─────────────────────────────────────────────
+    # --- Download / delete ---
 
     def _refresh(self, row: PackRow) -> None:
         row.refresh(
@@ -183,6 +208,7 @@ class LanguageManagerDialog(Adw.PreferencesDialog):
         threading.Thread(target=self._download_worker, args=(row,), daemon=True).start()
 
     def _download_worker(self, row: PackRow) -> None:
+        """Download one file on a worker thread; progress and the result are handed to the main loop via idle_add."""
         try:
             tessdata_manager.download(
                 self._quality, row.code, progress_cb=lambda percent: GLib.idle_add(self._show_progress, row, percent),
@@ -219,11 +245,12 @@ class LanguageManagerDialog(Adw.PreferencesDialog):
         self._notify_changed(row.code)
 
     def _notify_changed(self, code: str) -> None:
-        """Language lists only need refreshing when an actual language changed."""
+        """Call the change callback, but only for an actual language: support files do not affect language lists."""
         if self._on_changed and code not in tessdata_manager.NON_LANGUAGE_CODES:
             self._on_changed()
 
     def _toast(self, message: str) -> None:
+        # The toast overlay belongs to the window that hosts the dialog; without one the message is dropped.
         root = self.get_root()
         show_toast = getattr(root, "show_toast", None) if root else None
         if show_toast is not None:

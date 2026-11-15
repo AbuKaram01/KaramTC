@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """The app reopens the way it was left: window size, maximized state and the last tab.
 
 The first group only reads the saved settings. The second builds the real main window, so it
@@ -20,7 +23,7 @@ def isolated_settings(tmp_path, monkeypatch):
     settings._unsaved.clear()
 
 
-# ── Reading the saved values ────────────────────────────────────────
+# --- Reading the saved values ---
 
 def test_a_first_launch_uses_the_default_window():
     assert saved_settings.window_size() == saved_settings.WINDOW_DEFAULT_SIZE == (700, 620)
@@ -53,7 +56,7 @@ def test_only_a_real_true_counts_as_maximized():
     assert saved_settings.window_maximized() is False
 
 
-# ── The real window ─────────────────────────────────────────────────
+# --- The real window ---
 
 @pytest.fixture
 def make_window():

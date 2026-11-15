@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/book/classification.py — Native text or scanned image? Decided per page.
-"""
+"""Per-page decision between native text extraction and OCR of a scanned image."""
+
 from __future__ import annotations
 
 import threading
@@ -14,17 +13,17 @@ from core.book.constants import GARBLED_TEXT_MAX_RATIO, PAGE_IMAGE, PAGE_TEXT, T
 from core.book.errors import CancelledError
 from core.book.pdf_io import open_pdf, page_text
 
-_UNUSABLE_CATEGORIES = ("Co", "Cc")     # private-use glyphs, control codes
+# Unicode categories of characters that carry no readable text: private-use glyphs and control codes.
+_UNUSABLE_CATEGORIES = ("Co", "Cc")
 _REPLACEMENT_CHARACTER = "\ufffd"
 
 
 def native_text_looks_garbled(text: str) -> bool:
-    """
-    True if *text* (a page's native text layer) is mostly unusable characters:
-    U+FFFD replacement characters, private-use glyphs, or control codes. That
-    is what PyMuPDF returns for fonts with a missing or broken Unicode map, so
-    such a page is better served by OCR than by "extracting" its text layer.
-    Deliberately conservative — a few stray bullets or symbols never trip it.
+    """Return True if *text* (the native text layer of a page) is mostly unusable characters.
+
+    Unusable characters are U+FFFD replacement characters, private-use glyphs and control codes. This is what
+    PyMuPDF returns for fonts with a missing or broken Unicode map, so such a page is better served by OCR than by
+    extracting its text layer. The test is deliberately conservative: a few stray bullets or symbols never trip it.
     """
     visible = [char for char in text if not char.isspace()]
     if not visible:
@@ -37,12 +36,12 @@ def native_text_looks_garbled(text: str) -> bool:
 
 
 def _classify_page(doc, page_index: int) -> str:
+    """Return PAGE_TEXT if the page has a reliable native text layer, otherwise PAGE_IMAGE."""
     try:
         text = page_text(doc, page_index)
     except Exception:
-        # A page whose content can't be parsed has no usable text layer: treat
-        # it like a scanned page (it gets OCR'd from its image) rather than
-        # letting one damaged page stop the whole analysis.
+        # A page whose content cannot be parsed has no usable text layer. It is treated like a scanned page (OCR
+        # reads it from its image) so that one damaged page does not stop the whole analysis.
         return PAGE_IMAGE
     reliable = len(text) >= TEXT_PAGE_MIN_CHARS and not native_text_looks_garbled(text)
     return PAGE_TEXT if reliable else PAGE_IMAGE
@@ -53,11 +52,19 @@ def classify_pages(
     progress_cb=None,
     cancel_event: threading.Event | None = None,
 ) -> list[str]:
-    """
-    Analyses every page and returns PAGE_TEXT or PAGE_IMAGE for each.
-      PAGE_TEXT  → reliable selectable native text; extracted directly via PyMuPDF.
-      PAGE_IMAGE → scanned, too little text, or a garbled text layer; needs
-                   image conversion + OCR.
+    """Classify every page of the PDF and return PAGE_TEXT or PAGE_IMAGE for each, in page order.
+
+    * PAGE_TEXT: reliable, selectable native text, which is extracted directly via PyMuPDF.
+    * PAGE_IMAGE: a scanned page, a page with too little text or one with a garbled text layer. These need image
+      conversion and OCR.
+
+    Args:
+        pdf_path: The PDF to analyse.
+        progress_cb: Called as ``progress_cb(events.CLASSIFY, page_number, total)`` before each page.
+        cancel_event: When set, the analysis stops at the next page.
+
+    Raises:
+        CancelledError: *cancel_event* was set during the analysis.
     """
     doc = open_pdf(pdf_path)
     try:

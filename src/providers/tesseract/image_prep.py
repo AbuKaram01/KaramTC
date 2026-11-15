@@ -1,16 +1,14 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-providers/tesseract/image_prep.py — Prepares an image for Tesseract.
-"""
+"""Prepare an image for Tesseract."""
+
 from __future__ import annotations
 
 import os
 
-# A page's OCR time grows with its pixel count. 120 s is plenty for a normal
-# scan (a 200-DPI A4 page is ~4 MP) but not for the 600-DPI pages the PDF tab
-# can produce on a slow machine, so the limit scales with image size.
+# A page's OCR time grows with its pixel count. 120 s is plenty for a normal scan (a 200-DPI A4 page is ~4 MP) but not
+# for the 600-DPI pages the PDF tab can produce on a slow machine, so the limit scales with image size.
 OCR_BASE_TIMEOUT_S = 120
 OCR_MAX_TIMEOUT_S = 1800
 _TIMEOUT_FIXED_PART_S = 60
@@ -22,7 +20,7 @@ _PNG_SAFE_MODES = ("RGB", "RGBA", "L", "LA", "1")
 
 
 def ocr_timeout(image_path: str) -> float:
-    """Seconds to wait for Tesseract on *image_path*: at least the base limit, more for large images."""
+    """Return the seconds to wait for Tesseract on *image_path*: at least the base limit, more for large images."""
     try:
         from PIL import Image
         with Image.open(image_path) as image:
@@ -34,15 +32,14 @@ def ocr_timeout(image_path: str) -> float:
 
 
 def upright_copy(image_path: str, tmp_dir: str) -> str:
-    """
-    Phone and camera photos are usually stored sideways with an EXIF
-    "Orientation" tag telling viewers to rotate them. Tesseract ignores that
-    tag and reads the raw pixels, giving gibberish for a photo that looks
-    perfectly upright in any viewer.
+    """Return an upright copy of the image if its EXIF orientation tag asks for a rotation or flip.
 
-    If *image_path* carries a rotation/flip tag, returns a physically rotated
-    PNG copy inside *tmp_dir*; otherwise (or on any problem) returns
-    *image_path* unchanged.
+    Phone and camera photos are usually stored sideways with an EXIF "Orientation" tag telling viewers to rotate them.
+    Tesseract ignores that tag and reads the raw pixels, giving gibberish for a photo that looks perfectly upright in
+    any viewer.
+
+    If *image_path* carries such a tag, the result is a physically rotated PNG copy inside *tmp_dir*; otherwise (or on
+    any problem) it is *image_path* unchanged.
     """
     try:
         from PIL import Image, ImageOps

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """The model downloader against a local stand-in for the Hugging Face API and file server."""
 import json
 import os
@@ -49,7 +52,8 @@ def test_a_cancelled_download_continues_where_it_stopped(hub, tmp_path):
     assert model_store.is_downloaded(str(tmp_path))
     assert (tmp_path / "model.bin").read_bytes() == CONTENT["model.bin"]
     resolve_requests = [request for request in hub.requests if "/resolve/" in request[0]]
-    assert [path.rsplit("/", 1)[-1] for path, _ in resolve_requests] == ["model.bin"]      # small files were not fetched again
+    # small files were not fetched again
+    assert [path.rsplit("/", 1)[-1] for path, _ in resolve_requests] == ["model.bin"]
     assert resolve_requests[0][1] == f"bytes={kept}-"
 
 
@@ -102,7 +106,7 @@ def test_the_managed_folder_lives_in_the_app_data_directory(monkeypatch, tmp_pat
     assert not model_store.is_downloaded()
 
 
-# ── Choosing between the downloadable models ────────────────────────
+# --- Choosing between the downloadable models ---
 
 def test_the_catalog_offers_turbo_as_the_recommended_model_and_large_v3_too():
     by_id = {model.id: model for model in model_store.MODELS}
@@ -125,7 +129,8 @@ def test_each_model_has_its_own_folder_in_the_app_data_directory(monkeypatch, tm
     monkeypatch.setattr(model_store, "user_data_dir", lambda: str(tmp_path))
     assert model_store.managed_model_dir("large-v3") == str(tmp_path / "models" / "whisper-large-v3")
     assert model_store.managed_model_dir("large-v3-turbo") == str(tmp_path / "models" / "whisper-large-v3-turbo")
-    assert model_store.managed_model_dir("../../etc") == model_store.managed_model_dir()     # can't leave the models folder
+    # can't leave the models folder
+    assert model_store.managed_model_dir("../../etc") == model_store.managed_model_dir()
 
 
 def test_large_v3_is_downloaded_from_its_own_repository(hub, tmp_path):

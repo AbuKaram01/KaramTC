@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/speech_settings/dialog.py — The "Speech Settings" dialog of the Audio/Video tab.
+"""The "Speech Settings" dialog of the Audio/Video tab.
 
-Opened from the main menu and from the tab's "Set Up" banner. Everything is
-saved through settings.py as soon as it changes.
+The dialog is opened from the main menu and from the tab's "Set Up" banner. Everything is saved through settings.py
+as soon as it changes.
 """
+
 from __future__ import annotations
 
 import gi
@@ -32,7 +32,12 @@ _open_dialog: SpeechSettingsDialog | None = None
 
 
 def present_speech_settings(parent, on_changed=None) -> None:
-    """Opens Speech Settings over *parent*, unless it is already open."""
+    """Open Speech Settings over *parent*, unless the dialog is already open.
+
+    Args:
+        parent: The widget the dialog is presented over.
+        on_changed: Optional callback, passed on to the dialog (see SpeechSettingsDialog).
+    """
     global _open_dialog
     if _open_dialog is not None:
         return
@@ -48,8 +53,15 @@ def present_speech_settings(parent, on_changed=None) -> None:
 
 
 class SpeechSettingsDialog(Adw.PreferencesDialog):
+    """Preferences dialog for the speech model, the processing device and resuming interrupted transcriptions.
+
+    A model download that is still running is cancelled when the dialog closes; what was fetched is kept.
+
+    Args:
+        on_changed: Called without arguments whenever the model setup changes.
+    """
+
     def __init__(self, on_changed=None):
-        """:param on_changed: called (no arguments) whenever the model setup changes."""
         super().__init__(title="Speech Settings")
         self.set_search_enabled(False)
         self.set_content_width(560)
@@ -65,13 +77,14 @@ class SpeechSettingsDialog(Adw.PreferencesDialog):
         self.connect("closed", lambda *_: self._model.cancel_download())
 
     def _toast(self, message: str, timeout: int | None) -> None:
+        """Show a toast in the dialog; a timeout of None keeps the libadwaita default."""
         toast = Adw.Toast(title=message)
         toast.set_use_markup(False)
         if timeout:
             toast.set_timeout(timeout)
         self.add_toast(toast)
 
-    # ── Performance ───────────────────────────────────────────────────
+    # --- Performance ---
 
     def _build_performance_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Performance")
@@ -101,7 +114,7 @@ class SpeechSettingsDialog(Adw.PreferencesDialog):
     def _update_device_subtitle(self) -> None:
         self._device_row.set_subtitle(_DEVICE_HINTS[DEVICES[self._device_row.get_selected()]])
 
-    # ── Saved progress ────────────────────────────────────────────────
+    # --- Saved progress ---
 
     def _build_progress_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Interrupted transcriptions")

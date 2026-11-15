@@ -1,15 +1,14 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-providers/tesseract/lang_names.py — Display names for Tesseract language codes.
+"""Display names for Tesseract language codes.
 
-Pure data: no logic lives here, so the (long) tables never get in the way
-of reading the code that uses them.
+Pure data: no logic lives here, so the (long) tables never get in the way of reading the code that uses them.
 """
+
 from __future__ import annotations
 
-# Display names for known single-language Tesseract codes
+# Display names for the known single-language Tesseract codes.
 LANG_NAMES: dict[str, str] = {
     "afr": "Afrikaans",
     "amh": "Amharic",
@@ -131,8 +130,8 @@ LANG_NAMES: dict[str, str] = {
     "yor": "Yoruba",
 }
 
-# Common multi-language combinations offered as convenience options
-# Only shown when ALL component packs are installed
+# Common multi-language combinations offered as convenience options, as (code, display name) pairs. A combination is
+# only shown when ALL of its component packs are installed.
 LANG_COMBOS: list[tuple[str, str]] = [
     ("ara+eng", "Arabic + English"),
     ("ara+fra", "Arabic + French"),

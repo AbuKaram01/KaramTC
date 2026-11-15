@@ -1,14 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/media/languages.py — The languages Whisper large-v3 can transcribe.
-"""
+"""The languages that Whisper large-v3 can transcribe."""
 from __future__ import annotations
 
-# code → English name. Exactly the languages of the multilingual Whisper
-# large-v3 family (99 languages plus Cantonese); a test checks the codes
-# against the installed faster-whisper.
+# Language code to English name. Exactly the languages of the multilingual Whisper large-v3 family (99 languages plus
+# Cantonese); a test checks the codes against the installed faster-whisper.
 WHISPER_LANGUAGES: dict[str, str] = {
     "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "as": "Assamese", "az": "Azerbaijani",
     "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian", "bn": "Bengali", "bo": "Tibetan",
@@ -34,10 +31,10 @@ WHISPER_LANGUAGES: dict[str, str] = {
 
 
 def language_name(code: str) -> str:
-    """English name for a Whisper language code; the upper-cased code if unknown."""
+    """Return the English name for a Whisper language code; the upper-cased code if it is unknown."""
     return WHISPER_LANGUAGES.get(code, code.upper())
 
 
 def languages_by_name() -> list[tuple[str, str]]:
-    """(code, name) pairs sorted by name — for pickers."""
+    """Return (code, name) pairs sorted by name, for language pickers."""
     return sorted(WHISPER_LANGUAGES.items(), key=lambda item: item[1])

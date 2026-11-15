@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""The transcription job with a fake speech engine: output, progress events, Stop, resume and error cases."""
+
 import os
 import threading
 from types import SimpleNamespace
@@ -65,13 +70,22 @@ def test_a_transcript_is_written_with_progress_and_language_events(media, model_
     log = []
     result = run(make_request(media, model_dir, tmp_path), tmp_path, events_log=log)
 
-    assert (tmp_path / "talk.txt").read_text() == "one two three four\n"        # continuous text by default
-    assert (result.language, result.language_probability, result.segment_count, result.duration) == ("en", 0.97, 4, TOTAL)
+    assert (tmp_path / "talk.txt").read_text() == "one two three four\n"  # continuous text by default
+    assert (result.language, result.language_probability, result.segment_count, result.duration) == (
+        "en",
+        0.97,
+        4,
+        TOTAL,
+    )
     assert result.text == "one two three four" and result.resumed_segments == 0
     progress = [event for event in log if event[0] == events.PROGRESS]
     assert [event[1] for event in progress] == [2.0, 4.0, 6.0, 8.0] and progress[0][3] == "one"
     assert (events.LANGUAGE, "en", 0.97) in log
-    assert [event[1] for event in log if event[0] == events.STAGE] == ["Loading the speech model…", "Transcribing…", "Saving…"]
+    assert [event[1] for event in log if event[0] == events.STAGE] == [
+        "Loading the speech model…",
+        "Transcribing…",
+        "Saving…",
+    ]
     assert not (tmp_path / "talk.txt.part").exists()
 
 
@@ -127,7 +141,9 @@ def test_stopping_keeps_the_segments_and_resuming_gives_the_same_transcript(medi
 
     engine = FakeEngine()
     log = []
-    result = run(make_request(media, model_dir, tmp_path, resume=True, text_layout="lines"), tmp_path, engine, events_log=log)
+    result = run(
+        make_request(media, model_dir, tmp_path, resume=True, text_layout="lines"), tmp_path, engine, events_log=log
+    )
 
     assert engine.calls == [(int((TOTAL - 2.0) * SAMPLE_RATE), "en", 2.0)]       # continued from the end of "one"
     assert (tmp_path / "talk.txt").read_text() == "one\ntwo\nthree\nfour\n"
@@ -187,7 +203,7 @@ def test_a_journal_that_cannot_be_written_only_warns(media, model_dir, tmp_path)
     assert result.segment_count == 4 and warnings and "continuing without it" in warnings[0]
 
 
-# ── The faster-whisper adapter ──────────────────────────────────────
+# --- The faster-whisper adapter ---
 
 class FakeWhisperModel:
     def __init__(self, segments, language="ar"):
@@ -246,7 +262,11 @@ def test_audio_and_video_files_are_decoded_for_real(tmp_path):
 
     def write(path, with_audio, with_video):
         with av.open(path, "w") as container:
-            audio = container.add_stream("pcm_s16le" if path.endswith(".wav") else "aac", rate=16000, layout="mono") if with_audio else None
+            audio = (
+                container.add_stream("pcm_s16le" if path.endswith(".wav") else "aac", rate=16000, layout="mono")
+                if with_audio
+                else None
+            )
             if with_video:
                 stream = container.add_stream("mpeg4", rate=5)
                 stream.width, stream.height, stream.pix_fmt = 64, 64, "yuv420p"

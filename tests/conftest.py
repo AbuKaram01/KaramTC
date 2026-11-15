@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Shared fixtures: a project-root import path, throwaway PDFs and fake OCR providers."""
 import os
 import sys
@@ -24,8 +27,8 @@ def empty_data_folder(monkeypatch, tmp_path_factory):
     """Every test starts with an empty application data folder.
 
     On Windows KaramTC's own tesseract.exe, the one install-windows.ps1 unpacks into the data folder, is found before
-    anything else. On a machine where it is installed (the windows-full-install job) that real copy would leak into every
-    test that asks which program runs. A test that needs a copy sets its own XDG_DATA_HOME, as the tests of
+    anything else. On a machine where it is installed (the windows-full-install job) that real copy would leak into
+    every test that asks which program runs. A test that needs a copy sets its own XDG_DATA_HOME, as the tests of
     providers.tesseract.program do."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path_factory.getbasetemp() / "empty-data-home"))
 

@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/progress_frame.py — The card shown while a long job runs: title, bar, detail line, Stop.
+"""The card shown while a long job runs: title, bar, detail line and Stop button.
 
-Each tab subclasses it to turn its own progress events into these four widgets.
+Each tab subclasses ProgressFrame to turn its own progress events into these four widgets.
 """
+
 from __future__ import annotations
 
 import gi
@@ -19,6 +19,12 @@ _STOPPING_MESSAGE = "Stopping and saving progress…"
 
 
 class ProgressFrame(Gtk.Frame):
+    """Card with a title, a progress bar, a detail line and a Stop button.
+
+    *on_stop* is the "clicked" handler of the Stop button. Subclasses update the title and detail labels
+    (``_title``, ``_detail``) and the bar through ``_set_progress()``.
+    """
+
     def __init__(self, on_stop):
         super().__init__()
         self.add_css_class("card")
@@ -53,7 +59,7 @@ class ProgressFrame(Gtk.Frame):
         content.append(stop_row)
 
     def reset(self, title: str) -> None:
-        """Back to the start of a new job."""
+        """Return the card to the start of a new job, with *title* as its heading."""
         self._stop_button.set_sensitive(True)
         self._title.set_text(title)
         self._bar.set_fraction(0.0)
@@ -61,9 +67,11 @@ class ProgressFrame(Gtk.Frame):
         self._detail.set_text("")
 
     def show_stopping(self) -> None:
+        """Disable the Stop button and show that the job is stopping and saving its progress."""
         self._stop_button.set_sensitive(False)
         self._detail.set_text(_STOPPING_MESSAGE)
 
     def _set_progress(self, fraction: float, text: str) -> None:
+        """Set the bar to *fraction* (0.0 to 1.0) and show *text* on it."""
         self._bar.set_fraction(fraction)
         self._bar.set_text(text)

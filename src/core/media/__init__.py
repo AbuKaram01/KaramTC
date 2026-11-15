@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/media — Audio and video → text, with Whisper (no GTK).
+"""Audio and video to text with Whisper. This package does not depend on GTK.
 
 Typical use:
+
     request = MediaRequest(path, output_path_for(path, None, "txt"), MediaSettings(), EngineSettings(model_dir))
     result = run_media_transcription(request, progress_cb, cancel_event)
 """
+
 from core.media import events
 from core.media.constants import (
     DEVICE_AUTO, DEVICE_CPU, DEVICE_GPU, DEVICES, MEDIA_EXTENSIONS, MODEL_SOURCES, OUTPUT_FORMATS,

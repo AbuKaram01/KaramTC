@@ -1,20 +1,21 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/book/extraction.py — The hybrid extraction pipeline (native text + OCR).
+"""The hybrid extraction pipeline, which combines native PDF text with OCR.
 
-  Start/resume — continue an interrupted job, or start a clean one.
-  Stage 0      — classify pages as text (native) or image (scanned/garbled).
-                 Image mode "on" skips this and treats every page as an image;
-                 "off" classifies only to count weak pages, then uses native
-                 text for all of them.
-  Stage 1      — convert image pages to compressed JPEGs, sequentially.
-  Stage 2      — extract: text pages directly via PyMuPDF, image pages via OCR.
-  Finalize     — assemble the searchable PDF if one was requested.
+The pipeline runs in these steps::
 
-No GTK dependency — can be tested independently.
+    Start/resume  Continue an interrupted job, or start a clean one.
+    Stage 0       Classify the pages as text (native) or image (scanned or garbled).
+                  Image mode "on" skips this and treats every page as an image. Image mode "off" classifies
+                  only to count the weak pages and then uses native text for all of them.
+    Stage 1       Convert the image pages to compressed JPEGs, sequentially.
+    Stage 2       Extract: text pages directly via PyMuPDF, image pages via OCR.
+    Finalize      Assemble the searchable PDF if one was requested.
+
+The module has no GTK dependency, so it can be tested on its own.
 """
+
 from __future__ import annotations
 
 import threading
@@ -40,7 +41,17 @@ from core.book.workdir import (
 
 
 class BookExtraction:
-    """One run of the pipeline; use run_book_extraction() to execute it."""
+    """One run of the pipeline; use run_book_extraction() to execute it.
+
+    The run keeps its state in the progress record (``_data``), which is saved after every page. That is what
+    makes Stop and Resume possible.
+
+    Args:
+        request: What to extract and where to write it.
+        progress_cb: Receives ``progress_cb(kind, *args)`` calls as described in core.book.events, or None.
+        cancel_event: When set, the run stops with CancelledError at the next checkpoint.
+        resume: Continue the saved job for this PDF if there is one.
+    """
 
     def __init__(
         self,
@@ -57,23 +68,36 @@ class BookExtraction:
         self._resume = resume
 
         self._progress = BookProgress(self._paths.progress_path)
-        self._data: dict = {}                       # the persisted progress record
-        self._settings = request.settings           # replaced by the job's own saved settings
+        # The persisted progress record.
+        self._data: dict = {}
+        # Replaced by the settings the job was started with once the progress record is known.
+        self._settings = request.settings
         self._ocr_confidences: list[float] = []
         self._page_types: list[str] = []
-        self._included: list[int] = []              # original indices of the pages being extracted
+        # Original (zero-based) indices of the pages being extracted.
+        self._included: list[int] = []
         self._image_paths: dict[int, str] = {}
         self._render_failures: dict[int, str] = {}
-        self._failed_pages: dict[int, str] = {}     # {1-based page number: reason}
-        self._failure_streak: list[tuple[int, int | None]] = []   # (position, text size before it)
+        # {1-based page number: reason} for the pages that could not be read.
+        self._failed_pages: dict[int, str] = {}
+        # The failures since the last successful page, as (position, text size before the page).
+        self._failure_streak: list[tuple[int, int | None]] = []
         self._text_output = NoTextOutput()
-        self._native_doc = None                     # one shared handle for native-text pages
+        # One document handle shared by all native-text pages, opened on first use.
+        self._native_doc = None
         self._renderer: PageImageRenderer | None = None
         self._page_ocr: PageOcrRunner | None = None
 
-    # ── Orchestration ─────────────────────────────────────────────────
+    # --- Orchestration ---
 
     def run(self) -> BookResult:
+        """Run every step of the pipeline and return the result.
+
+        Raises:
+            CancelledError: The cancel event was set. The progress record is kept so that the job can be resumed.
+            RuntimeError: The job cannot continue, for example because the PDF is unreadable or too many pages in
+                a row failed.
+        """
         self._start_or_resume()
         self._prepare_for_settings()
         self._decide_page_types()
@@ -84,38 +108,39 @@ class BookExtraction:
         return self._build_result()
 
     def _notify(self, kind: str, *args) -> None:
+        """Forward an event to the progress callback, if there is one."""
         if self._progress_cb:
             self._progress_cb(kind, *args)
 
-    # ── Start / resume ────────────────────────────────────────────────
+    # --- Start / resume ---
 
     def _start_or_resume(self) -> None:
+        """Load the saved progress record when resuming, otherwise start a clean job."""
         fingerprint = pdf_fingerprint(self._pdf_path)
         if self._resume and self._can_resume(fingerprint):
             self._data = self._progress.data
             return
-        # Start clean: drop leftover page images from an earlier run of this
-        # book. Existing output files are deliberately NOT deleted: the ones
-        # this run produces are simply overwritten when it writes them (the
-        # caller asks the user before replacing anything), and a file of the
-        # *other* format — or one that merely shares the name with an
-        # unrelated user file — is none of our business, and a run that fails
-        # early shouldn't have destroyed the previous good result.
+        # Start clean: drop leftover page images from an earlier run of this book. Existing output files are
+        # deliberately NOT deleted. The ones this run produces are simply overwritten when it writes them (the
+        # caller asks the user before replacing anything). A file of the *other* format, or one that merely shares
+        # the name with an unrelated user file, is not this run's to remove, and a run that fails early must not
+        # have destroyed the previous good result.
         remove_work_dir(self._paths.images_dir)
         self._data = new_progress_record(self._request, fingerprint)
         self._progress.data = self._data
         self._progress.save()
 
     def _can_resume(self, current_fingerprint) -> bool:
+        """Return True if a usable saved job exists for this PDF and the PDF is still the same file."""
         if not (self._progress.load() and self._progress.is_resumable_for(self._pdf_path)):
             return False
-        # Guard against resuming against a file replaced at the same path
-        # since the progress was written (size/mtime changed).
+        # Do not resume against a file that was replaced at the same path after the progress was written (its size
+        # or modification time changed).
         saved = self._progress.data.get("pdf_fingerprint")
         return saved is None or current_fingerprint is None or list(saved) == list(current_fingerprint)
 
     def _prepare_for_settings(self) -> None:
-        """Adopts the settings the job started with (for resume consistency)."""
+        """Adopt the settings the job started with, so that a resumed job is consistent, and build the helpers."""
         self._settings = settings_from_progress(self._data, self._request.settings)
         self._ocr_confidences = self._data.setdefault("ocr_confidences", [])
 
@@ -132,16 +157,22 @@ class BookExtraction:
             self._renderer, self._request.provider, settings.lang, options, self._cancel_event,
         )
 
-    # ── Stage 0: which pages are text, which are images ───────────────
+    # --- Stage 0: which pages are text, which are images ---
 
     def _decide_page_types(self) -> None:
+        """Classify the pages unless the saved job already did, and determine which pages are extracted.
+
+        Raises:
+            RuntimeError: There is nothing to extract. The progress record is deleted in that case.
+        """
         page_types = self._data.get("page_types")
         if page_types is None:
             page_types = self._analyse_pages()
             self._data["page_types"] = page_types
             self._page_types = page_types
             self._included = self._included_indices()
-            self._data["total_pages"] = len(self._included)   # pages actually being extracted
+            # Counts only the pages actually being extracted.
+            self._data["total_pages"] = len(self._included)
             self._progress.save()
         else:
             self._page_types = page_types
@@ -160,9 +191,10 @@ class BookExtraction:
         return [index for index in range(len(self._page_types)) if index not in excluded]
 
     def _analyse_pages(self) -> list[str]:
+        """Return the type (PAGE_TEXT or PAGE_IMAGE) of every page according to the image mode."""
         mode = self._settings.image_mode
         if mode == IMAGE_MODE_ON:
-            # Skip analysis — convert every page to an image for OCR
+            # Skip the analysis: every page is converted to an image for OCR.
             page_types = [PAGE_IMAGE] * pdf_page_count(self._pdf_path)
         else:
             self._notify(events.STAGE, "Analysing PDF pages…")
@@ -174,11 +206,13 @@ class BookExtraction:
         return page_types
 
     def _native_text_only(self, page_types: list[str]) -> list[str]:
-        """
-        Image mode "off": use native text for every page. The classification
-        is still useful — the pages it marked as images are the ones with
-        little or unreliable native text, which is what we warn about instead
-        of OCR'ing.
+        """Apply image mode "off": use native text for every page.
+
+        The classification is still useful. The pages it marked as images are the ones with little or unreliable
+        native text, and the job reports their number as a warning instead of running OCR on them.
+
+        Raises:
+            RuntimeError: No page has usable native text. The progress record is deleted in that case.
         """
         excluded = self._settings.excluded_pages
         weak_pages = [
@@ -195,12 +229,14 @@ class BookExtraction:
         self._data["low_text_pages"] = len(weak_pages)
         return [PAGE_TEXT] * len(page_types)
 
-    # ── Stage 1: convert scanned pages to images ──────────────────────
+    # --- Stage 1: convert scanned pages to images ---
 
     def _scanned_indices(self) -> list[int]:
+        """Return the indices of the included pages that are extracted by OCR."""
         return [index for index in self._included if self._page_types[index] == PAGE_IMAGE]
 
     def _convert_scanned_pages(self) -> None:
+        """Render the scanned pages to images, reusing the complete images left by an interrupted run."""
         scanned = self._scanned_indices()
         if not scanned:
             return
@@ -213,9 +249,10 @@ class BookExtraction:
             ))
         self._image_paths = images
 
-    # ── Stage 2: extract text ─────────────────────────────────────────
+    # --- Stage 2: extract text ---
 
     def _announce_extraction(self) -> None:
+        """Tell the progress callback which kind of extraction is about to start."""
         image_count = len(self._scanned_indices())
         text_count = len(self._included) - image_count
         if self._settings.image_mode == IMAGE_MODE_ON:
@@ -229,14 +266,13 @@ class BookExtraction:
         self._notify(events.STAGE, label)
 
     def _first_page_to_extract(self) -> int:
-        """
-        Where to continue. If the .txt is missing or shorter than the progress
-        record says (e.g. the user deleted it between runs), the text of the
-        "already completed" pages no longer exists: restart from page 1
-        instead of silently leaving them out of the regenerated file. (Only
-        applies when a .txt is produced — a PDF-only run has no equivalent
-        all-or-nothing file to lose, since each OCR page's fragment is saved
-        independently.)
+        """Return the position (among the included pages) at which extraction continues.
+
+        If the .txt is missing or shorter than the progress record says, for example because the user deleted it
+        between runs, the text of the "already completed" pages no longer exists. Extraction then restarts from
+        the first page instead of silently leaving those pages out of the regenerated file. This only applies
+        when a .txt is produced: a PDF-only run has no equivalent all-or-nothing file to lose, because the
+        fragment of each OCR page is saved independently.
         """
         start = min(self._data.get("completed_pages", 0), len(self._included))
         needs_text_file = start > 0 and self._settings.wants_text
@@ -251,8 +287,8 @@ class BookExtraction:
         start = self._first_page_to_extract()
         if self._settings.wants_text:
             self._text_output = TextOutput(self._paths.txt_path, append=start > 0)
-        # Pages that could not be read are recorded (and saved with the job, so
-        # a resume still reports them) and replaced by a one-line placeholder.
+        # Pages that could not be read are recorded, and saved with the job so that a resume still reports them.
+        # Each of them is replaced by a one-line placeholder.
         self._failed_pages = {int(page): reason for page, reason in self._data.get("failed_pages", {}).items()}
         try:
             for position in range(start, len(self._included)):
@@ -263,6 +299,7 @@ class BookExtraction:
                 self._native_doc.close()
 
     def _extract_page(self, position: int) -> None:
+        """Extract one page, turn a failure into a placeholder and save the progress."""
         index = self._included[position]
         if self._cancel_event.is_set():
             raise CancelledError()
@@ -280,17 +317,26 @@ class BookExtraction:
         self._save_page(position, index, text)
 
     def _read_native_page(self, position: int, index: int) -> tuple[str | None, str | None]:
+        """Read a native-text page and return ``(text, failure)``.
+
+        The text is None when no text output is wanted. The failure is None unless the page could not be read.
+        """
         self._notify(events.DIRECT, position + 1, len(self._included))
         if not self._settings.wants_text:
             return None, None
         try:
             if self._native_doc is None:
-                self._native_doc = open_pdf(self._pdf_path)      # opened once, on first use
+                self._native_doc = open_pdf(self._pdf_path)
             return extract_text_direct(self._pdf_path, index, doc=self._native_doc), None
         except Exception as exc:
             return None, f"its text could not be extracted ({short_reason(exc)})"
 
     def _read_scanned_page(self, position: int, index: int) -> tuple[str | None, str | None]:
+        """OCR a scanned page and return ``(text, failure)``.
+
+        On success the OCR confidence is collected and, if a searchable PDF is wanted, the PDF fragment of the
+        page is written to the working folder.
+        """
         total = len(self._included)
         self._notify(events.OCR, position + 1, total)
 
@@ -311,7 +357,11 @@ class BookExtraction:
         return result.text, None
 
     def _record_failure(self, position: int, index: int, failure: str, size_before: int | None) -> str:
-        """Notes an unreadable page and returns the placeholder text for it."""
+        """Record an unreadable page and return the placeholder text for it.
+
+        Raises:
+            RuntimeError: This was the last of MAX_CONSECUTIVE_PAGE_FAILURES failures in a row.
+        """
         self._failure_streak.append((position, size_before))
         if len(self._failure_streak) >= MAX_CONSECUTIVE_PAGE_FAILURES:
             self._abort_after_failure_streak(index, failure)
@@ -320,9 +370,14 @@ class BookExtraction:
         return page_failure_text(index + 1, failure)
 
     def _abort_after_failure_streak(self, index: int, failure: str) -> None:
-        """Takes the failed run back out — the text written for it, and its place
-        in the progress record — so that Resume, after the cause is fixed,
-        retries these pages. Then stops the job."""
+        """Take the run of failed pages back out of the output and the progress record, then stop the job.
+
+        Both the text written for the run and its place in the progress record are removed, so that Resume
+        retries these pages once the cause has been fixed.
+
+        Raises:
+            RuntimeError: Always; the message names the pages and the last error.
+        """
         first_position, first_size = self._failure_streak[0]
         for earlier_position, _size in self._failure_streak[:-1]:
             self._failed_pages.pop(self._included[earlier_position] + 1, None)
@@ -342,9 +397,11 @@ class BookExtraction:
         )
 
     def _failed_pages_for_saving(self) -> dict[str, str]:
+        """Return the failed pages with string keys, as JSON object keys must be strings."""
         return {str(page): reason for page, reason in self._failed_pages.items()}
 
     def _save_page(self, position: int, index: int, text: str | None) -> None:
+        """Write the page to the text output and record it as completed in the progress file."""
         if self._settings.wants_text:
             self._data["txt_size"] = self._text_output.write_page(
                 index + 1, text, self._settings.page_numbers,
@@ -354,9 +411,10 @@ class BookExtraction:
         self._data["failed_pages"] = self._failed_pages_for_saving()
         self._progress.save()
 
-    # ── Finalize ──────────────────────────────────────────────────────
+    # --- Finalize ---
 
     def _finalize(self) -> None:
+        """Assemble the searchable PDF if requested, then remove the working folder and the progress file."""
         if self._settings.wants_searchable_pdf:
             self._notify(events.STAGE, "Assembling searchable PDF…")
             assemble_pdf(
@@ -369,6 +427,7 @@ class BookExtraction:
         self._progress.delete()
 
     def _build_result(self) -> BookResult:
+        """Summarise the finished run."""
         settings = self._settings
         confidences = self._ocr_confidences
         return BookResult(
@@ -388,13 +447,19 @@ def run_book_extraction(
     cancel_event: threading.Event,
     resume: bool = False,
 ) -> BookResult:
-    """
-    Runs the hybrid pipeline for *request*.
+    """Run the hybrid pipeline for *request* and return its result.
 
-    :param progress_cb:  progress_cb(kind, *args) — see core/book/events.py.
-    :param cancel_event: when set, the run stops with CancelledError, leaving
-                         a progress record that a later resume continues from.
-    :param resume:       continue the saved job for this PDF if there is one
-                         (it then keeps the settings it started with).
+    Args:
+        request: What to extract and where to write it.
+        progress_cb: Called as ``progress_cb(kind, *args)``; see core.book.events for the kinds.
+        cancel_event: When set, the run stops with CancelledError and leaves a progress record from which a later
+            resume continues.
+        resume: Continue the saved job for this PDF if there is one. The job then keeps the settings it started
+            with.
+
+    Raises:
+        CancelledError: *cancel_event* was set during the run.
+        RuntimeError: The job cannot continue, for example because the PDF is unreadable or too many pages in a
+            row failed.
     """
     return BookExtraction(request, progress_cb, cancel_event, resume).run()

@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""The GTK 4 + libadwaita runtime inside the Windows installer: scripts/gtk-portable.ps1, the build, the install script
-and the installer script that carry it, and how the application finds it.
+"""The GTK 4 + libadwaita runtime inside the Windows installer.
 
-The PowerShell is run with PowerShell 7 (pwsh) where it is installed, on stand-in zips that have the files the install
-script looks for; what the real gvsbuild zip looks like on the build machine is what the CI job that builds the installer
-(and the manual installer job) check.
+Covers scripts/gtk-portable.ps1, the build, install and installer scripts that carry it, and how the application
+finds it.
+
+The PowerShell is run with PowerShell 7 (pwsh) where it is installed, on stand-in zips that have the files the
+install script looks for. What the real gvsbuild zip looks like on the build machine is checked by the CI job that
+builds the installer and by the manual installer job.
 """
 
 import shutil
@@ -21,7 +23,7 @@ WINDOWS = ROOT / "packaging" / "windows"
 needs_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell 7 (pwsh) is not available")
 
 
-# -- the GTK runtime inside the Windows installer ------------------------------------------------------
+# --- The GTK runtime inside the Windows installer ---
 
 def test_the_windows_installer_carries_the_gtk_runtime_when_one_was_prepared():
     text = (WINDOWS / "karamtc.iss").read_text(encoding="utf-8")
@@ -48,7 +50,8 @@ def test_the_install_script_uses_the_runtime_inside_the_installer_before_downloa
     assert "gtk-portable.ps1" in install and "Resolve-GtkChoice" in install
     assert "function Test-GtkRuntime" not in install              # One definition, in gtk-portable.ps1.
     assert install.index("Resolve-GtkChoice -Explicit") < install.index("Get-PortableGtk -Target $GtkDir")
-    assert "$CustomGtk   = $gtkChoice.Custom" in install          # The bundled runtime is found by itself: nothing to save.
+    # The bundled runtime is found by itself: nothing to save.
+    assert "$CustomGtk   = $gtkChoice.Custom" in install
 
 
 def test_the_gtk_download_is_checked_before_it_is_used():
@@ -89,7 +92,9 @@ def run_gtk_script(tmp_path: Path, body: str) -> subprocess.CompletedProcess:
 def test_a_gtk_zip_becomes_a_complete_runtime_folder(tmp_path, prefix):
     zip_path = make_gtk_zip(tmp_path / "GTK4_Gvsbuild_2026.8.0_x64.zip", prefix)
     target = tmp_path / "out" / "gtk"
-    result = run_gtk_script(tmp_path, f"$ok = Get-PortableGtk -Target '{target}' -ZipPath '{zip_path}'\nWrite-Output \"RESULT=$ok\"")
+    result = run_gtk_script(
+        tmp_path, f"$ok = Get-PortableGtk -Target '{target}' -ZipPath '{zip_path}'\nWrite-Output \"RESULT=$ok\""
+    )
     assert "RESULT=True" in result.stdout, result.stdout + result.stderr
     for name in GTK_FILES:
         assert (target / name).is_file(), name
@@ -102,7 +107,9 @@ def test_a_gtk_zip_becomes_a_complete_runtime_folder(tmp_path, prefix):
 def test_an_incomplete_gtk_zip_is_refused_and_leaves_nothing_behind(tmp_path):
     zip_path = make_gtk_zip(tmp_path / "gtk.zip", skip=("lib/girepository-1.0/Adw-1.typelib",))
     target = tmp_path / "out" / "gtk"
-    result = run_gtk_script(tmp_path, f"$ok = Get-PortableGtk -Target '{target}' -ZipPath '{zip_path}'\nWrite-Output \"RESULT=$ok\"")
+    result = run_gtk_script(
+        tmp_path, f"$ok = Get-PortableGtk -Target '{target}' -ZipPath '{zip_path}'\nWrite-Output \"RESULT=$ok\""
+    )
     assert "RESULT=False" in result.stdout, result.stdout + result.stderr
     assert "not a complete GTK 4" in result.stdout
     assert not target.exists() and not (tmp_path / "out" / "gtk.partial").exists()
@@ -115,10 +122,18 @@ def test_a_gtk_zip_must_match_the_hash_it_is_pinned_to(tmp_path):
     zip_path = make_gtk_zip(tmp_path / "gtk.zip")
     right = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     wrong = ("0" if right[0] != "0" else "1") + right[1:]
-    bad = run_gtk_script(tmp_path, f"$ok = Get-PortableGtk -Target '{tmp_path / 'bad'}' -ZipPath '{zip_path}' -Sha256 '{wrong}'\nWrite-Output \"RESULT=$ok\"")
+    bad = run_gtk_script(
+        tmp_path,
+        f"$ok = Get-PortableGtk -Target '{tmp_path / 'bad'}' -ZipPath '{zip_path}' -Sha256 '{wrong}'\n"
+        "Write-Output \"RESULT=$ok\"",
+    )
     assert "RESULT=False" in bad.stdout and "does not match the expected SHA256" in bad.stdout, bad.stdout + bad.stderr
     assert not (tmp_path / "bad").exists()
-    good = run_gtk_script(tmp_path, f"$ok = Get-PortableGtk -Target '{tmp_path / 'good'}' -ZipPath '{zip_path}' -Sha256 '{right.upper()}'\nWrite-Output \"RESULT=$ok\"")
+    good = run_gtk_script(
+        tmp_path,
+        f"$ok = Get-PortableGtk -Target '{tmp_path / 'good'}' -ZipPath '{zip_path}' -Sha256 '{right.upper()}'\n"
+        "Write-Output \"RESULT=$ok\"",
+    )
     assert "RESULT=True" in good.stdout, good.stdout + good.stderr
     assert right.upper() in (tmp_path / "good" / "gvsbuild-release.txt").read_text(encoding="utf-8-sig").upper()
 
@@ -129,7 +144,11 @@ def test_a_complete_runtime_that_is_already_there_is_left_alone(tmp_path):
     for name in GTK_FILES:
         (target / name).parent.mkdir(parents=True, exist_ok=True)
         (target / name).write_bytes(b"mine")
-    result = run_gtk_script(tmp_path, f"$ok = Get-PortableGtk -Target '{target}' -ZipPath '{tmp_path / 'does-not-exist.zip'}'\nWrite-Output \"RESULT=$ok\"")
+    result = run_gtk_script(
+        tmp_path,
+        f"$ok = Get-PortableGtk -Target '{target}' -ZipPath '{tmp_path / 'does-not-exist.zip'}'\n"
+        "Write-Output \"RESULT=$ok\"",
+    )
     assert "RESULT=True" in result.stdout, result.stdout + result.stderr
     assert (target / GTK_FILES[0]).read_bytes() == b"mine"
 
@@ -149,7 +168,8 @@ def make_runtime_folder(folder: Path, complete: bool = True) -> Path:
         ("mine", "complete", "mine", True, False),               # -GtkDir wins, even over a bundled runtime.
         ("default", "complete", "default", False, False),         # ... and naming the default folder is not "custom".
         (None, "complete", "app/gtk", False, True),                # The runtime inside the installer, found by itself.
-        (None, "incomplete", "default", False, False),             # A damaged one is not used: the default folder (a download).
+        # A damaged one is not used: the default folder (a download).
+        (None, "incomplete", "default", False, False),
         (None, None, "default", False, False),                     # A checkout has none.
     ],
     ids=["explicit", "explicit default", "bundled", "damaged bundle", "none"],
@@ -173,7 +193,7 @@ def test_which_gtk_runtime_the_install_script_uses(tmp_path, explicit, bundled, 
     assert lines["CUSTOM"] == str(custom) and lines["BUNDLED"] == str(is_bundled)
 
 
-# -- which gvsbuild release, and what a failed installation leaves behind ---------------------------------
+# --- Which gvsbuild release, and what a failed installation leaves behind ---
 
 def test_the_gtk_release_is_a_tested_one_and_not_the_newest():
     portable = (ROOT / "scripts" / "gtk-portable.ps1").read_text(encoding="utf-8")
@@ -204,24 +224,29 @@ def test_the_installer_keeps_a_log_of_the_install_script_and_points_to_it():
     assert "[string]$LogFile" in install and "Start-Transcript" in install
     iss = (WINDOWS / "karamtc.iss").read_text(encoding="utf-8")
     assert "-LogFile" in iss and "{#AppId}\\install.log" in iss
-    assert iss.count("install.log") >= 2                                              # Passed to the script, named in the error.
+    # Passed to the script, named in the error.
+    assert iss.count("install.log") >= 2
 
 
-# -- CI and the installation check ----------------------------------------------------------------------------
+# --- CI and the installation check ---
 
 def test_ci_checks_that_the_installer_carries_the_gtk_runtime_and_installs_and_upgrades_it():
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     installer_job = ci.split("  installer:")[1].split("  windows-installer-run:")[0]
     carries = installer_job.split("- name: The installer carries the GTK runtime")[1].split("- uses:")[0]
     assert "Test-GtkRuntime 'packaging\\gtk'" in carries and "pygobject*.whl" in carries and "throw" in carries
-    assert "GITHUB_TOKEN" in installer_job                                # Lifts the API rate limit of the digest lookup.
+    # Lifts the API rate limit of the digest lookup.
+    assert "GITHUB_TOKEN" in installer_job
 
     run_job = ci.split("  windows-installer-run:")[1].split("  windows-full-install:")[0]
     assert "if: github.event_name == 'workflow_dispatch'" in run_job            # Manual only: it installs everything.
     assert "run-installer.ps1 -Label first" in run_job and "run-installer.ps1 -Label second" in run_job
-    assert run_job.count("check-installed.ps1") == 2                              # After the first install and after the upgrade.
-    assert "keep-me.txt" in run_job.split("- name: Run the installer again")[0]       # The user's data is there before the upgrade ...
-    assert "keep-me.txt" in run_job.split("- name: Check the upgraded installation")[1]   # ... and still there after it.
+    # After the first install and after the upgrade.
+    assert run_job.count("check-installed.ps1") == 2
+    # The user's data is there before the upgrade ...
+    assert "keep-me.txt" in run_job.split("- name: Run the installer again")[0]
+    # ... and still there after it.
+    assert "keep-me.txt" in run_job.split("- name: Check the upgraded installation")[1]
 
 
 def test_the_installation_check_looks_for_what_the_installer_and_the_install_script_leave():
@@ -229,11 +254,14 @@ def test_the_installation_check_looks_for_what_the_installer_and_the_install_scr
     install = (ROOT / "scripts" / "install-windows.ps1").read_text(encoding="utf-8")
     iss = (WINDOWS / "karamtc.iss").read_text(encoding="utf-8")
     marker = "GTK 4 and libadwaita come with the installer"
-    assert marker in install and marker in check                                    # What the script says, what the check wants.
-    assert "Remove-Item Env:KARAMTC_GTK_DIR" in check                             # Nothing tells the application where GTK is.
+    # What the script says, what the check wants.
+    assert marker in install and marker in check
+    # Nothing tells the application where GTK is.
+    assert "Remove-Item Env:KARAMTC_GTK_DIR" in check
     assert "winsupport.prepare_runtime()" in check and "Path(sys.prefix).parent / \"gtk\"" in check
     assert "io.github.AbuKaram01.KaramTC" in check and "install.log" in check
-    assert "-LogFile" in iss and "{#AppId}\\install.log" in iss                    # The log the check (and the CI job) read.
+    # The log the check (and the CI job) read.
+    assert "-LogFile" in iss and "{#AppId}\\install.log" in iss
     runner = (WINDOWS / "run-installer.ps1").read_text(encoding="utf-8")
     assert "/VERYSILENT" in runner and "install.log" in runner and "io.github.AbuKaram01.KaramTC" in runner
 
@@ -242,7 +270,8 @@ def test_the_application_looks_for_the_runtime_where_the_installer_puts_it():
     iss = (WINDOWS / "karamtc.iss").read_text(encoding="utf-8")
     winsupport = (ROOT / "src" / "winsupport.py").read_text(encoding="utf-8")
     assert 'DestDir: "{app}\\gtk"' in iss                                            # <application folder>\gtk ...
-    assert 'os.path.join(application_folder(), "gtk")' in winsupport                  # ... is where winsupport looks (beside .venv).
+    # ... is where winsupport looks (beside .venv).
+    assert 'os.path.join(application_folder(), "gtk")' in winsupport
     assert 'DestDir: "{app}\\src"' in iss and 'DefaultDirName={localappdata}\\Programs\\{#AppName}' in iss
 
 

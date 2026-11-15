@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/pdf_tab/page.py — The PDF tab: choose a book, extract it, resume it.
+"""The PDF tab: choose a book, extract it, resume it.
 
-Handles UI only; all extraction logic lives in core/book.
+Handles UI only; all extraction logic lives in core/book. The extraction itself runs on a worker thread; its progress
+and completion are handed back to the main thread with GLib.idle_add(), because GTK widgets may only be touched there.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,24 +34,26 @@ from ui.widgets import (
     add_file_drop_target, centered_row, pill_button, scrolled_clamp, set_button_text, status_page,
 )
 
+# The three pages of the tab; exactly one is shown at a time (see PdfTab._set_mode).
 _MODE_SELECT, _MODE_PROGRESS, _MODE_DONE = "select", "progress", "done"
 _START_LABEL = "Start extraction"
 _RESTART_LABEL = "Start over"
 
 
 class PdfTab(Adw.Bin):
-    """Embeddable PDF-extraction tab (no page-navigation chrome of its own —
-    it lives inside the main window's tab switcher)."""
+    """Embeddable PDF-extraction tab.
+
+    It has no page-navigation chrome of its own: it lives inside the tab switcher of the main window.
+
+    Args:
+        on_settings_changed: Called when OCR Settings changes in a way that could affect which languages are
+            available, so that the parent window can refresh the other tab too. Without it, only this tab is
+            refreshed.
+        on_running_changed: Called whenever an extraction starts or ends, so that the parent window can lock OCR
+            Settings while one runs.
+    """
 
     def __init__(self, on_settings_changed=None, on_running_changed=None):
-        """
-        :param on_settings_changed: called when OCR Settings changes in a way
-            that could affect which languages are available, so the parent
-            window can refresh the other tab too. Without it, only this tab
-            is refreshed.
-        :param on_running_changed: called whenever an extraction starts or
-            ends, so the parent window can lock OCR Settings while one runs.
-        """
         super().__init__()
         self._on_settings_changed = on_settings_changed
         self._on_running_changed = on_running_changed
@@ -59,28 +62,32 @@ class PdfTab(Adw.Bin):
         self._output_dir: str | None = None
         self._page_count: int | None = None
         self._excluded_pages: set[int] = set()
-        self._resume_data: dict | None = None       # progress of an interrupted job for this PDF
+        # Progress data of an interrupted job for this PDF, if there is one to resume.
+        self._resume_data: dict | None = None
         self._cancel_event = threading.Event()
         self._is_running = False
 
         self._build_layout()
         self._set_mode(_MODE_SELECT)
 
-    # ── Public interface (used by the main window) ────────────────────
+    # --- Public interface (used by the main window) ---
 
     def is_running(self) -> bool:
-        """True while an extraction is in progress — checked before quitting
-        so the user isn't caught by a silent, unwarned exit."""
+        """Return True while an extraction is in progress.
+
+        The main window checks this before quitting, so that the user is not caught by a silent, unwarned exit.
+        """
         return self._is_running
 
     def set_settings_enabled(self, enabled: bool) -> None:
+        """Enable or disable the OCR Settings gear of the language selector."""
         self._language.set_settings_enabled(enabled)
 
     def refresh_languages(self) -> None:
-        """Called after OCR Settings changes the source or downloads/deletes a language."""
+        """Reload the language list; called after OCR Settings changes the source or downloads/deletes a language."""
         self._language.refresh()
 
-    # ── Layout ────────────────────────────────────────────────────────
+    # --- Layout ---
 
     def _build_layout(self) -> None:
         self._toast_overlay = Adw.ToastOverlay()
@@ -134,7 +141,7 @@ class PdfTab(Adw.Bin):
 
         self._options = BookOptions(on_image_mode_changed=self._show_image_mode_effect)
         self._options.add_to(self._file_group)
-        # Rows are added in this order: ..., language, format, numbers, contrast, image mode.
+        # The rows end up in this order: source rows, language, format, numbers, contrast, image mode.
 
     def _build_start_controls(self) -> None:
         self._resume_banner = Adw.Banner(button_label="Resume")
@@ -148,9 +155,11 @@ class PdfTab(Adw.Bin):
         self._outer.append(self._start_button)
 
     def _show_image_mode_effect(self, choice) -> None:
+        """Show on the language row how the selected image mode affects it."""
         self._language.set_subtitle(choice.language_subtitle)
 
     def _set_mode(self, mode: str) -> None:
+        """Show the widgets that belong to *mode* and hide all others."""
         has_pdf = bool(self._pdf_path)
         selecting = mode == _MODE_SELECT
         show_empty = selecting and not has_pdf
@@ -163,6 +172,7 @@ class PdfTab(Adw.Bin):
         self._done_page.set_visible(mode == _MODE_DONE)
 
     def _set_running(self, running: bool) -> None:
+        """Record whether an extraction is running and tell the parent window."""
         self._is_running = running
         if self._on_running_changed:
             self._on_running_changed()
@@ -170,16 +180,17 @@ class PdfTab(Adw.Bin):
     def _toast(self, message: str) -> None:
         dialogs.show_toast(self._toast_overlay, message)
 
-    # ── OCR Settings ──────────────────────────────────────────────────
+    # --- OCR Settings ---
 
     def _on_open_ocr_settings(self, *_) -> None:
         present_ocr_settings(
             self.get_root(), on_changed=self._on_settings_changed or self.refresh_languages,
         )
 
-    # ── Choosing the PDF ──────────────────────────────────────────────
+    # --- Choosing the PDF ---
 
     def _on_drop(self, _target, value, _x, _y) -> bool:
+        """Accept a dropped PDF file; return whether the drop was accepted."""
         if self._is_running:
             self._toast("An extraction is already running \u2014 stop it first")
             return False
@@ -197,15 +208,15 @@ class PdfTab(Adw.Bin):
         )
         file_dialogs.open_file(
             self.get_root(), "Open PDF file", [pdf_filter], self._set_pdf,
-            # e.g. a network location opened through the file portal that has no local path
+            # For example a network location opened through the file portal, which has no local path.
             on_not_local=lambda: self._toast("Please choose a PDF stored on this computer"),
         )
 
     def _set_pdf(self, path: str) -> None:
         self._pdf_path = path
         self._output_dir = self._remembered_output_dir() or os.path.dirname(os.path.abspath(path)) or None
-        # Keep the reset button in step with the stored setting, including when the
-        # remembered folder is currently unusable (the user may want to clear it).
+        # Keep the reset button in step with the stored setting, including when the remembered folder is currently
+        # unusable (the user may want to clear it).
         self._source.set_reset_visible(bool(app_settings.get(saved_settings.PDF_OUTPUT_DIR, "")))
         self._done_page.forget_result()
         self._excluded_pages = set()
@@ -214,9 +225,8 @@ class PdfTab(Adw.Bin):
         try:
             self._page_count = pdf_page_count(path)
         except Exception as exc:
-            # Encrypted, damaged, empty, or not really a PDF: say so and stay on
-            # the "choose a PDF" page rather than offering a Start button that
-            # can only fail the same way.
+            # Encrypted, damaged, empty, or not really a PDF: say so and stay on the "choose a PDF" page rather than
+            # offering a Start button that can only fail the same way.
             self._toast(str(exc) or "This file could not be opened as a PDF")
             self._reset()
             return
@@ -227,6 +237,7 @@ class PdfTab(Adw.Bin):
         self._set_mode(_MODE_SELECT)
 
     def _describe_pdf(self, path: str) -> str:
+        """Return the details line of the PDF row: file size and page count."""
         details = f"{self._page_count} pages"
         try:
             size_mb = os.path.getsize(path) / (1024 * 1024)
@@ -235,13 +246,16 @@ class PdfTab(Adw.Bin):
         return f"{size_mb:.1f} MB  \u2022  {details}"
 
     def _on_new_book(self, *_) -> None:
-        """'New book' goes straight to the file chooser — resetting to the
-        empty page first and making the user click "Open PDF…" again is an
-        extra step nobody wants after finishing a book."""
+        """Go straight to the file chooser to pick another book.
+
+        Resetting to the empty page first and making the user click "Open PDF…" again would add a needless step
+        after finishing a book.
+        """
         self._reset()
         self._on_choose_pdf()
 
     def _reset(self) -> None:
+        """Forget the current PDF and return to the empty "choose a PDF" state."""
         self._pdf_path = self._output_dir = self._page_count = None
         self._resume_data = None
         self._done_page.forget_result()
@@ -251,7 +265,7 @@ class PdfTab(Adw.Bin):
         self._resume_banner.set_revealed(False)
         self._set_mode(_MODE_SELECT)
 
-    # ── Output folder ─────────────────────────────────────────────────
+    # --- Output folder ---
 
     def _on_choose_output(self, *_) -> None:
         initial = self._output_dir if self._output_dir and os.path.isdir(self._output_dir) else None
@@ -260,18 +274,18 @@ class PdfTab(Adw.Bin):
     def _on_output_chosen(self, folder: str) -> None:
         self._output_dir = folder
         self._source.set_output_folder(folder)
-        # Remembered for every book from now on, until the user picks another
-        # folder or presses the reset button.
+        # Remembered for every book from now on, until the user picks another folder or presses the reset button.
         app_settings.set(saved_settings.PDF_OUTPUT_DIR, folder)
         self._source.set_reset_visible(True)
         self._check_resume()
         self._set_mode(_MODE_SELECT)
 
     def _remembered_output_dir(self) -> str | None:
-        """The folder the user last chose, if it is still usable. A folder that
-        has since been deleted or unmounted (USB drive, network share…) falls
-        back to saving next to the PDF — with a heads-up — instead of failing
-        at the end of a long extraction."""
+        """Return the folder the user last chose, if it is still usable, else None.
+
+        A folder that has since been deleted or unmounted (USB drive, network share, ...) falls back to saving next
+        to the PDF, with a heads-up, instead of failing at the end of a long extraction.
+        """
         saved = app_settings.get(saved_settings.PDF_OUTPUT_DIR, "")
         if not saved:
             return None
@@ -290,7 +304,7 @@ class PdfTab(Adw.Bin):
             self._set_mode(_MODE_SELECT)
         self._toast("Saving next to each PDF again")
 
-    # ── Pages to extract ──────────────────────────────────────────────
+    # --- Pages to extract ---
 
     def _on_choose_pages(self, *_) -> None:
         if not self._pdf_path or not self._page_count:
@@ -303,17 +317,16 @@ class PdfTab(Adw.Bin):
         self._excluded_pages = excluded_pages
         self._source.show_pages(self._page_count, len(self._excluded_pages))
 
-    # ── Resume ────────────────────────────────────────────────────────
+    # --- Resume ---
 
     def _check_resume(self, search_pdf_folder: bool = False) -> None:
-        """
-        Offers to resume an interrupted job for the current PDF.
+        """Offer to resume an interrupted job for the current PDF.
 
-        *search_pdf_folder* is for when a book has just been opened: a job
-        interrupted before an output folder was being remembered (or while a
-        different one was) lives next to the PDF, so look there too and switch
-        to that folder, rather than silently starting a second job. It is not
-        used after the user picks a folder by hand — that choice stands.
+        Args:
+            search_pdf_folder: Set when a book has just been opened. A job interrupted before an output folder was
+                being remembered (or while a different one was) lives next to the PDF, so look there too and switch
+                to that folder, rather than silently starting a second job. It is not set after the user picks a
+                folder by hand, because that choice stands.
         """
         self._resume_data = None
         if not self._pdf_path:
@@ -322,10 +335,9 @@ class PdfTab(Adw.Bin):
         if job is not None and job.output_dir != self._output_dir:
             self._output_dir = job.output_dir
             self._source.set_output_folder(job.output_dir)
-        # A saved job exists for this path — but if the file itself has since
-        # been replaced with different content (same name, new PDF), resuming
-        # would silently mix pages from two different documents. Discard the
-        # stale progress instead of offering to resume it.
+        # A saved job exists for this path, but if the file itself has since been replaced with different content
+        # (same name, new PDF), resuming would silently mix pages from two different documents. Discard the stale
+        # progress instead of offering to resume it.
         if job is not None and job.progress.pdf_was_replaced(self._pdf_path):
             job.progress.delete()
             job = None
@@ -337,6 +349,7 @@ class PdfTab(Adw.Bin):
         self._offer_resume(job.progress.data)
 
     def _offer_resume(self, data: dict) -> None:
+        """Show the resume banner for the saved job described by *data* and restore its settings."""
         self._resume_data = data
         self._restore_options_from_job(data)
         total = data.get("total_pages") or self._page_count or 0
@@ -350,6 +363,7 @@ class PdfTab(Adw.Bin):
         set_button_text(self._start_button, _RESTART_LABEL)
 
     def _restore_options_from_job(self, data: dict) -> None:
+        """Make the options, the language and the excluded pages match those of the saved job."""
         self._options.load_from_job(data)
         saved_lang = data.get("lang")
         if saved_lang:
@@ -359,7 +373,7 @@ class PdfTab(Adw.Bin):
             self._excluded_pages = set(saved_excluded)
             self._source.show_pages(self._page_count, len(self._excluded_pages))
 
-    # ── Starting an extraction ────────────────────────────────────────
+    # --- Starting an extraction ---
 
     def _on_start_clicked(self, *_) -> None:
         if self._resume_data is not None:
@@ -369,9 +383,8 @@ class PdfTab(Adw.Bin):
                 accept_id="restart", accept_label=_RESTART_LABEL, on_accept=lambda: self._on_start(resume=False),
             )
             return
-        # A brand-new run overwrites its output files. If some already exist —
-        # a previous extraction of this book, or an unrelated file that just
-        # shares the name — never replace them without asking.
+        # A brand-new run overwrites its output files. If some already exist (a previous extraction of this book, or
+        # an unrelated file that just shares the name), never replace them without asking.
         existing = job_setup.existing_outputs(self._pdf_path, self._output_dir, self._options.output_format)
         if existing:
             self._confirm_replace(existing)
@@ -379,6 +392,7 @@ class PdfTab(Adw.Bin):
         self._on_start(resume=False)
 
     def _confirm_replace(self, existing: list[str]) -> None:
+        """Ask before overwriting the output files that already exist; *existing* holds their names."""
         names = "\n".join(f"\u2022 {name}" for name in existing)
         dialogs.confirm(
             self.get_root(),
@@ -390,6 +404,7 @@ class PdfTab(Adw.Bin):
         )
 
     def _on_start(self, resume: bool) -> None:
+        """Validate the settings and start the extraction on a worker thread; *resume* continues the saved job."""
         if not self._pdf_path:
             return
         problem = job_setup.problem_blocking_start(
@@ -407,6 +422,7 @@ class PdfTab(Adw.Bin):
             self._pdf_path, output_dir, self._language.selected_code(), self._options, self._excluded_pages,
         )
         app_settings.set(saved_settings.LAST_OCR_LANG, request.settings.lang)
+        # A fresh event per run, so that a Stop pressed during an earlier run cannot cancel this one.
         self._cancel_event = threading.Event()
         self._set_running(True)
         self._progress_card.start(os.path.basename(self._pdf_path))
@@ -416,6 +432,7 @@ class PdfTab(Adw.Bin):
         ).start()
 
     def _worker(self, request: BookRequest, resume: bool, cancel_event: threading.Event) -> None:
+        """Run the extraction (on the worker thread) and report the outcome to the main thread."""
         try:
             result = run_book_extraction(request, self._progress_cb, cancel_event, resume=resume)
             GLib.idle_add(self._on_book_done, result, request.paths.output_dir)
@@ -428,12 +445,14 @@ class PdfTab(Adw.Bin):
         self._cancel_event.set()
         self._progress_card.show_stopping()
 
-    # ── Progress and completion (called on the main thread) ───────────
+    # --- Progress and completion (called on the main thread) ---
 
     def _progress_cb(self, kind: str, *args) -> None:
+        """Receive a progress event from the worker thread and queue it for the main thread."""
         GLib.idle_add(self._on_progress_event, kind, *args)
 
     def _on_progress_event(self, kind: str, *args) -> bool:
+        """Pass a queued progress event to the progress card; runs once, on the main thread."""
         self._progress_card.update(kind, *args)
         return GLib.SOURCE_REMOVE
 
@@ -456,9 +475,8 @@ class PdfTab(Adw.Bin):
         self._set_running(False)
         self._check_resume()
         self._set_mode(_MODE_SELECT)
-        # Only promise a Resume if there really is a saved job: failures before
-        # the first page (unreadable PDF, no usable text, folder not writable…)
-        # leave nothing to resume.
+        # Only promise a Resume if there really is a saved job: failures before the first page (unreadable PDF, no
+        # usable text, folder not writable, ...) leave nothing to resume.
         suffix = "\n\nProgress was saved — press Resume to try again." if self._resume_data is not None else ""
         dialogs.show_message_dialog(self.get_root(), "Extraction error", f"{message}{suffix}")
         return GLib.SOURCE_REMOVE

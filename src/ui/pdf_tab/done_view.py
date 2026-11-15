@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""The "extraction complete" page of the PDF tab.
+
+Shows what was produced, which pages need attention, and buttons to open the results.
 """
-ui/pdf_tab/done_view.py — The "extraction complete" page.
-"""
+
 from __future__ import annotations
 
 import gi
@@ -15,10 +17,12 @@ from gi.repository import Adw, Gio, Gtk
 from core.book import BookResult
 from ui.widgets import centered_row, pill_button
 
+# Longer lists of failed page numbers are truncated, so that the summary stays readable.
 _MAX_FAILED_PAGES_SHOWN = 12
 
 
 def _failed_pages_line(result: BookResult) -> str:
+    """Return the warning about unreadable pages and where they are marked in each output."""
     numbers = sorted(result.failed_pages)
     shown = ", ".join(str(number) for number in numbers[:_MAX_FAILED_PAGES_SHOWN])
     if len(numbers) > _MAX_FAILED_PAGES_SHOWN:
@@ -36,7 +40,7 @@ def _failed_pages_line(result: BookResult) -> str:
 
 
 def describe_result(result: BookResult) -> str:
-    """The summary text shown on the completion page."""
+    """Return the summary text shown on the completion page."""
     lines = [f"Extracted {result.total_pages} pages"]
     if result.ocr_pages:
         confidence = (
@@ -56,8 +60,14 @@ def describe_result(result: BookResult) -> str:
 
 
 class DonePage:
-    """The completion page; put `widget` into the tab. (Adw.StatusPage is a
-    final type and cannot be subclassed, hence composition.)"""
+    """The completion page; put `widget` into the tab.
+
+    Adw.StatusPage is a final type and cannot be subclassed, hence composition.
+
+    Args:
+        on_new_book: Called when the user presses "New book".
+        on_error: Called with a message when a result file or folder cannot be opened.
+    """
 
     def __init__(self, on_new_book, on_error):
         self.widget = Adw.StatusPage()
@@ -68,8 +78,8 @@ class DonePage:
         self._pdf_path: str | None = None
         self._folder: str | None = None
 
-        # Distinct icons + visible labels: the text file, the PDF and the folder
-        # are three different things and must be tellable apart at a glance.
+        # Distinct icons and visible labels: the text file, the PDF and the folder are three different targets
+        # and must be distinguishable at a glance.
         self._open_text_button = pill_button(
             "Open text file", "text-x-generic-symbolic", lambda *_: self._open(self._txt_path), suggested=True,
         )
@@ -86,6 +96,7 @@ class DonePage:
         ))
 
     def show_result(self, result: BookResult, output_dir: str) -> None:
+        """Display a finished extraction; buttons for outputs that were not produced are hidden."""
         self._txt_path = result.txt_path
         self._pdf_path = result.pdf_path
         self._folder = output_dir
@@ -96,12 +107,15 @@ class DonePage:
         self.widget.set_description(describe_result(result))
 
     def set_visible(self, visible: bool) -> None:
+        """Show or hide the page."""
         self.widget.set_visible(visible)
 
     def forget_result(self) -> None:
+        """Drop the remembered output paths, so that a stale result cannot be opened."""
         self._txt_path = self._pdf_path = self._folder = None
 
     def _open(self, path: str | None) -> None:
+        """Open a file or folder with the default application; failures are reported through `on_error`."""
         if not path:
             return
         try:

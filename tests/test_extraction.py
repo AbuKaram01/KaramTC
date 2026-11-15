@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Book extraction end to end: native and scanned pages, excluded pages, Stop and resume, and failing pages."""
+
 import os
 import threading
 

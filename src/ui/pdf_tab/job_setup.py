@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/pdf_tab/job_setup.py — Turning the PDF tab's state into a job to run.
+"""Turn the state of the PDF tab into a job to run.
 
-Plain functions, no widgets: what blocks a start, which output files a new run
-would overwrite, whether the output folder is usable, and the BookRequest.
+Plain functions, no widgets: what blocks a start, which output files a new run would overwrite, whether the output
+folder is usable, and the BookRequest.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -25,7 +25,7 @@ from ui import saved_settings
 def problem_blocking_start(
     image_mode: str, has_languages: bool, page_count: int | None, excluded_count: int,
 ) -> str | None:
-    """Why extraction can't start right now (a message for the user), or None."""
+    """Return why extraction cannot start right now (a message for the user), or None."""
     # "Off" extracts native text only, so it needs neither Tesseract nor a language.
     if image_mode != IMAGE_MODE_OFF:
         if not is_installed():
@@ -38,7 +38,7 @@ def problem_blocking_start(
 
 
 def existing_outputs(pdf_path: str, output_dir: str | None, output_format: str) -> list[str]:
-    """File names (in the output folder) that a fresh extraction would overwrite."""
+    """Return the names of the files in the output folder that a fresh extraction would overwrite."""
     folder = output_dir or os.path.dirname(os.path.abspath(pdf_path))
     paths = book_paths(pdf_path, folder)
     candidates = []
@@ -50,7 +50,7 @@ def existing_outputs(pdf_path: str, output_dir: str | None, output_format: str) 
 
 
 def output_folder_is_usable(folder: str) -> bool:
-    """Creates *folder* if needed; True if files can be written into it."""
+    """Create *folder* if needed and return True if files can be written into it."""
     with contextlib.suppress(OSError):
         os.makedirs(folder, exist_ok=True)
     return os.path.isdir(folder) and os.access(folder, os.W_OK | os.X_OK)
@@ -59,11 +59,16 @@ def output_folder_is_usable(folder: str) -> bool:
 def build_request(
     pdf_path: str, output_dir: str, language: str | None, options, excluded_pages: set[int],
 ) -> BookRequest:
-    """
-    Snapshots everything the worker needs — it must keep processing this
-    exact file with these settings even if the UI changes meanwhile.
+    """Snapshot everything the worker needs into a BookRequest.
 
-    :param options: the PDF tab's BookOptions (output format, page numbers, …).
+    The worker must keep processing this exact file with these settings even if the UI changes meanwhile.
+
+    Args:
+        pdf_path: The PDF to extract.
+        output_dir: The folder that receives the output files.
+        language: The OCR language code, or None for the default language.
+        options: The BookOptions of the PDF tab (output format, page numbers, ...).
+        excluded_pages: The pages the user excluded; copied, so that later UI changes do not affect the job.
     """
     settings = BookJobSettings(
         lang=language or DEFAULT_LANG,

@@ -1,15 +1,14 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/page_selection/selection_dialog.py — "Pages to extract" thumbnail picker.
+"""The "Pages to extract" thumbnail picker.
 
-Shows every page of the chosen PDF as a thumbnail with a checkbox, all
-checked by default. Unchecking a page excludes it from extraction entirely:
-it isn't classified, converted, OCR'd, or present in any output.
+Shows every page of the chosen PDF as a thumbnail with a checkbox, all checked by default. Unchecking a page excludes
+it from extraction entirely: it is not classified, converted or OCR'd, and it is not present in any output.
 
 Clicking a thumbnail opens PagePreviewDialog.
 """
+
 from __future__ import annotations
 
 import threading
@@ -24,18 +23,24 @@ from ui.page_selection.preview_dialog import PagePreviewDialog
 from ui.page_selection.rendering import iter_thumbnail_batches, picture_from_png
 from ui.widgets import dim_label, handler_blocked
 
-_THUMB_WIDTH = 140      # grid thumbnail width, in pixels
-_THUMB_BATCH = 24       # thumbnails handed to the UI at a time while the rest render
+# Grid thumbnail width, in pixels.
+_THUMB_WIDTH = 140
+# Number of thumbnails handed to the UI at a time while the rest render.
+_THUMB_BATCH = 24
+# Height/width ratio of a thumbnail (portrait page).
 _THUMB_ASPECT = 1.35
 
 
 class PageSelectionDialog(Adw.Dialog):
-    """
-    :param pdf_path:       the PDF to render thumbnails from.
-    :param page_count:     total pages (already known by the caller).
-    :param excluded_pages: currently excluded 0-indexed pages, so reopening
-                           shows the same selection.
-    :param on_done:        called with the new excluded-pages set once closed.
+    """Dialog that shows every page of a PDF as a thumbnail with a checkbox to include or exclude it.
+
+    The thumbnails are rendered on a background thread in batches, so the dialog opens at once even for a long book.
+
+    Args:
+        pdf_path: The PDF to render thumbnails from.
+        page_count: The total number of pages (already known by the caller).
+        excluded_pages: The currently excluded zero-based pages, so that reopening shows the same selection.
+        on_done: Called with the new set of excluded pages once the dialog is closed.
     """
 
     def __init__(self, pdf_path: str, page_count: int, excluded_pages: set[int], on_done):
@@ -47,8 +52,10 @@ class PageSelectionDialog(Adw.Dialog):
         self._page_count = page_count
         self._excluded = set(excluded_pages)
         self._on_done = on_done
-        self._closed = False        # set when the dialog closes, so the render thread stops
-        self._loaded = 0            # thumbnails shown so far
+        # Set when the dialog closes, so that the render thread stops.
+        self._closed = False
+        # Number of thumbnails shown so far.
+        self._loaded = 0
         self._checks: dict[int, Gtk.CheckButton] = {}
 
         toolbar_view = Adw.ToolbarView()
@@ -69,7 +76,7 @@ class PageSelectionDialog(Adw.Dialog):
         self.connect("closed", self._on_closed)
         threading.Thread(target=self._render_thumbnails, daemon=True).start()
 
-    # ── Construction ──────────────────────────────────────────────────
+    # --- Construction ---
 
     def _build_loading_state(self) -> Gtk.Box:
         """Shown first, while thumbnails render."""
@@ -126,9 +133,10 @@ class PageSelectionDialog(Adw.Dialog):
         bar.pack_end(done_button)
         return bar
 
-    # ── Thumbnail rendering (background thread) ───────────────────────
+    # --- Thumbnail rendering (background thread) ---
 
     def _render_thumbnails(self) -> None:
+        """Render the thumbnails on a worker thread; each batch is handed to the main loop via idle_add."""
         try:
             for batch in iter_thumbnail_batches(
                 self._pdf_path, _THUMB_WIDTH, _THUMB_BATCH, lambda: self._closed,
@@ -161,8 +169,8 @@ class PageSelectionDialog(Adw.Dialog):
         picture.set_content_fit(Gtk.ContentFit.CONTAIN)
         picture.set_size_request(_THUMB_WIDTH, int(_THUMB_WIDTH * _THUMB_ASPECT))
 
-        # The thumbnail is a button — click it for a full-size, readable preview.
-        # Kept separate from the checkbox so previewing never toggles inclusion.
+        # The thumbnail is a button that opens a full-size, readable preview. It is kept separate from the checkbox
+        # so that previewing never toggles inclusion.
         zoom_button = Gtk.Button()
         zoom_button.set_child(picture)
         zoom_button.add_css_class("flat")
@@ -179,7 +187,7 @@ class PageSelectionDialog(Adw.Dialog):
         self._checks[index] = check
         return card
 
-    # ── Selection ─────────────────────────────────────────────────────
+    # --- Selection ---
 
     def _open_preview(self, index: int) -> None:
         PagePreviewDialog(
@@ -195,7 +203,7 @@ class PageSelectionDialog(Adw.Dialog):
             self._excluded.add(index)
 
     def _on_preview_toggle(self, index: int, included: bool) -> None:
-        """Keeps the grid's checkbox in step with a toggle made in the preview."""
+        """Keep the grid's checkbox in step with a toggle made in the preview."""
         self._mark(index, included)
         check = self._checks.get(index)
         if check is not None:

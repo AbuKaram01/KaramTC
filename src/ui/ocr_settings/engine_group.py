@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/ocr_settings/engine_group.py — The "Recognition engine" group of OCR Settings.
+"""The "Recognition engine" group of the OCR Settings dialog.
 
-Raw Tesseract tuning: engine mode, page segmentation, internal variables and
-free-form custom parameters.
+Raw Tesseract tuning: engine mode, page segmentation, internal variables and free-form custom parameters.
 """
+
 from __future__ import annotations
 
 import gi
@@ -23,12 +22,20 @@ from ui.widgets import string_list, switch_row
 
 _EDGES_SCALE_RANGE = (1, 100)
 _EDGES_SCALE_STEP = 1
-_DEFAULT_OEM_INDEX = 3      # the "Default" entry of OEM_OPTIONS
+# Position of the "Default" entry in OEM_OPTIONS, used when the saved engine mode is not in the list.
+_DEFAULT_OEM_INDEX = 3
 
 
 class EngineGroup:
+    """Preferences group for the Tesseract engine mode, page segmentation mode and advanced options.
+
+    Every control writes its value to the settings as soon as it changes.
+
+    Args:
+        on_psm_changed: Called without arguments after a new page segmentation mode was saved.
+    """
+
     def __init__(self, on_psm_changed):
-        """:param on_psm_changed: called (no arguments) after a new page segmentation mode was saved."""
         self._on_psm_changed = on_psm_changed
         self.group = Adw.PreferencesGroup(
             title="Recognition engine",
@@ -40,14 +47,14 @@ class EngineGroup:
         self._build_custom_parameters()
 
     def selected_psm(self) -> tuple[int, str] | None:
-        """(mode number, short label) of the selected page segmentation mode."""
+        """Return the selected page segmentation mode as (mode number, short label), or None if nothing is selected."""
         index = self._psm_row.get_selected()
         if not 0 <= index < len(PSM_OPTIONS):
             return None
         value, label, _description = PSM_OPTIONS[index]
         return value, label
 
-    # ── Engine mode and page segmentation ─────────────────────────────
+    # --- Engine mode and page segmentation ---
 
     def _build_oem_row(self) -> None:
         self._oem_row = Adw.ComboRow()
@@ -65,8 +72,8 @@ class EngineGroup:
         self._psm_row = Adw.ComboRow()
         self._psm_row.set_title("Page segmentation (PSM)")
         self._psm_row.set_model(string_list(label for _value, label, _description in PSM_OPTIONS))
-        # psm_index() maps removed/unknown values (e.g. PSM 0 or 2 saved by an
-        # earlier version) to the default mode instead of a wrong list position.
+        # psm_index() maps removed or unknown values (for example PSM 0 or 2 saved by an earlier version) to the
+        # default mode instead of a wrong list position.
         self._psm_row.set_selected(psm_index(app_settings.get(saved_settings.OCR_PSM, DEFAULT_PSM)))
         self._psm_row.connect("notify::selected", self._on_psm_selected)
         self.group.add(self._psm_row)
@@ -87,7 +94,7 @@ class EngineGroup:
         self._update_subtitle(row, PSM_OPTIONS)
         self._on_psm_changed()
 
-    # ── Tesseract Options (internal variables) ────────────────────────
+    # --- Tesseract Options (internal variables) ---
 
     def _build_tesseract_options(self) -> Adw.ExpanderRow:
         expander = Adw.ExpanderRow()
@@ -104,10 +111,11 @@ class EngineGroup:
 
     @staticmethod
     def _setting_switch_row(setting_key: str, title: str) -> Adw.ActionRow:
-        """One switch bound to a boolean setting. Titles are the raw variable
-        names (not friendly prose): that is exactly what a user tuning these
-        already looks for, and guessing a description for an internal knob
-        risks being subtly wrong."""
+        """Build one switch row bound to a boolean setting.
+
+        Titles are the raw variable names rather than friendly prose: that is exactly what a user tuning these
+        already looks for, and guessing a description for an internal variable risks being subtly wrong.
+        """
         row, _switch = switch_row(
             title, bool(app_settings.get(setting_key, False)),
             lambda switch, _param: app_settings.set(setting_key, switch.get_active()),
@@ -144,7 +152,7 @@ class EngineGroup:
         app_settings.set(saved_settings.OCR_EDGES_ENABLED, enabled)
         scale.set_sensitive(enabled)
 
-    # ── Custom parameters ─────────────────────────────────────────────
+    # --- Custom parameters ---
 
     def _build_custom_parameters(self) -> None:
         entry = Adw.EntryRow()

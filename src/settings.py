@@ -1,17 +1,18 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-settings.py — Persistent user preferences (stored in the XDG config directory).
+"""Persistent user preferences, stored as JSON in the XDG config directory.
 
-Saved to: ~/.config/<APP_ID>/settings.json  (see config.APP_ID)
+The file is ~/.config/<APP_ID>/settings.json (see config.APP_ID). Every read goes back to the file, so the module
+keeps no in-memory copy of the settings; the exception is values that cannot be written, which are held in memory for
+the rest of the session.
 
 Public API:
-  load()              → dict  : Returns all saved settings (empty dict if none).
-  save(data)                  : Overwrites the settings file atomically.
-  get(key, default)   → any   : Reads one key from disk.
-  set(key, value)             : Writes one key to disk (merges with existing data).
-  remove(key)                 : Deletes one key (no-op if it isn't there).
+    load() -> dict: All saved settings (an empty dict if there are none).
+    save(data): Overwrite the settings file atomically.
+    get(key, default): Read one key from disk.
+    set(key, value): Write one key to disk, merging with the existing data.
+    remove(key): Delete one key (no-op if it is not there).
 """
 from __future__ import annotations
 
@@ -24,18 +25,19 @@ from config import APP_ID, fallback_base_dir
 
 SETTINGS_FILE_NAME = "settings.json"
 
-# Values that could not be written to disk (read-only home, full disk, …).
-# They are still honoured for the rest of the session — otherwise a choice
-# the user just made would silently not take effect, because every read goes
-# back to the file.
+# Values that could not be written to disk (read-only home, full disk, ...).
+# They are still honoured for the rest of the session. Otherwise a choice the user just made would silently not take
+# effect, because every read goes back to the file.
 _unsaved: dict = {}
 
+# Sentinel meaning "the stored value does not fit the expected type" (None is a legitimate stored value).
 _MISSING = object()
 
 
 @functools.lru_cache(maxsize=1)
 def _config_dir() -> str:
-    # Resolved lazily so GTK need not be imported at module load time.
+    """Return the application's config folder, resolved on first use and then cached."""
+    # Resolved lazily so that GTK need not be imported at module load time.
     try:
         from gi.repository import GLib
         base = GLib.get_user_config_dir()
@@ -45,17 +47,21 @@ def _config_dir() -> str:
 
 
 def _config_path() -> str:
+    """Return the full path of the settings file."""
     return os.path.join(_config_dir(), SETTINGS_FILE_NAME)
 
 
 def _quarantine(path: str) -> None:
-    """Moves an unreadable settings file aside (to settings.json.corrupt) so the
-    next write doesn't silently destroy whatever the user may want to recover."""
+    """Move an unusable settings file aside (to settings.json.corrupt).
+
+    This keeps the next write from silently destroying data the user may want to recover.
+    """
     with contextlib.suppress(OSError):
         os.replace(path, path + ".corrupt")
 
 
 def _is_readable(path: str) -> bool:
+    """Return True if the first byte of *path* can be read."""
     try:
         with open(path, "rb") as settings_file:
             settings_file.read(1)
@@ -65,10 +71,11 @@ def _is_readable(path: str) -> bool:
 
 
 def _read_saved_settings(path: str) -> dict | None:
-    """
-    The settings stored on disk: {} if there are none or the file is damaged
-    (it is set aside first), or None if the file exists but cannot be read
-    right now (it is then left alone).
+    """Return the settings stored on disk.
+
+    Returns:
+        {} if there are none or the file is damaged (it is set aside first), or None if the file exists but cannot
+        be read right now (it is then left alone).
     """
     try:
         with open(path, encoding="utf-8") as settings_file:
@@ -76,8 +83,8 @@ def _read_saved_settings(path: str) -> dict | None:
     except FileNotFoundError:
         return {}
     except (OSError, ValueError):
-        # OSError: unreadable right now. ValueError: not valid JSON (hand-edited
-        # or damaged) — keep a copy before it is overwritten.
+        # OSError: unreadable right now. ValueError: not valid JSON (hand-edited or damaged); keep a copy before it
+        # is overwritten.
         if not os.path.exists(path):
             return {}
         if not _is_readable(path):
@@ -91,7 +98,7 @@ def _read_saved_settings(path: str) -> dict | None:
 
 
 def load() -> dict:
-    """Returns all saved settings. Returns an empty dict if there are none."""
+    """Return all saved settings, merged with values that could not be written; empty if there are none."""
     saved = _read_saved_settings(_config_path())
     if saved is None:
         return dict(_unsaved)
@@ -99,7 +106,11 @@ def load() -> dict:
 
 
 def save(data: dict) -> bool:
-    """Atomically overwrites the settings file with *data*. False if it could not be written."""
+    """Overwrite the settings file with *data* atomically (temp file, fsync, then rename).
+
+    Returns:
+        False if the file could not be written.
+    """
     path = _config_path()
     temp_path = path + ".tmp"
     try:
@@ -117,6 +128,7 @@ def save(data: dict) -> bool:
 
 
 def _as_int(value):
+    """Return *value* as an int, or _MISSING. Booleans are rejected; whole floats are accepted."""
     if isinstance(value, bool):
         return _MISSING
     if isinstance(value, int):
@@ -127,12 +139,13 @@ def _as_int(value):
 
 
 def _as_float(value):
+    """Return *value* as a float, or _MISSING. Booleans are rejected."""
     is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
     return float(value) if is_number else _MISSING
 
 
 def _fits(value, default):
-    """*value* converted to the type of *default*, or _MISSING if it doesn't fit."""
+    """Return *value* converted to the type of *default*, or _MISSING if it does not fit."""
     if isinstance(default, bool):
         return value if isinstance(value, bool) else _MISSING
     if isinstance(default, int):
@@ -145,14 +158,12 @@ def _fits(value, default):
 
 
 def get(key: str, default=None):
-    """
-    Reads a single key from the saved settings.
+    """Read a single key from the saved settings.
 
-    When *default* is a bool, int, float, str, list or dict, a stored value of
-    a different type (a hand-edited or damaged settings.json, or one written
-    by another version) is ignored and *default* is returned instead, so no
-    caller can be crashed by a bad value. With a default of None the stored
-    value is returned as-is and the caller must validate it.
+    When *default* is a bool, int, float, str, list or dict, a stored value of a different type (a hand-edited or
+    damaged settings.json, or one written by another version) is ignored and *default* is returned instead, so no
+    caller can be crashed by a bad value. With a default of None the stored value is returned as-is and the caller
+    must validate it.
     """
     data = load()
     if key not in data:
@@ -162,17 +173,19 @@ def get(key: str, default=None):
 
 
 def set(key: str, value) -> None:  # noqa: A001 — public API name used as app_settings.set(...)
-    """Writes a single key, merging with any previously saved settings."""
-    data = load()                # already includes any not-yet-saved values
+    """Write a single key, merging with any previously saved settings."""
+    # load() already includes any not-yet-saved values.
+    data = load()
     data[key] = value
     if save(data):
-        _unsaved.clear()         # everything, including earlier unsaved values, is on disk now
+        # Everything, including earlier unsaved values, is on disk now.
+        _unsaved.clear()
     else:
         _unsaved[key] = value
 
 
 def remove(key: str) -> None:
-    """Deletes a single key so the setting goes back to its default."""
+    """Delete a single key so that the setting goes back to its default; no-op if it is not stored."""
     _unsaved.pop(key, None)
     data = load()
     if key in data:

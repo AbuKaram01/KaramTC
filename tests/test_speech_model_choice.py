@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Which downloadable speech model is saved, and what the app does with a damaged setting."""
 import pytest
 
@@ -25,7 +28,9 @@ def test_the_recommended_model_is_used_until_another_is_chosen():
 def test_a_chosen_model_is_remembered_and_loaded_from_its_own_folder(tmp_path):
     settings.set(saved_settings.SPEECH_MODEL_CHOICE, "large-v3")
     assert saved_settings.speech_model_id() == "large-v3"
-    assert saved_settings.read_speech_engine_settings().model_dir == str(tmp_path / "data" / "models" / "whisper-large-v3")
+    assert saved_settings.read_speech_engine_settings().model_dir == str(
+        tmp_path / "data" / "models" / "whisper-large-v3"
+    )
     assert saved_settings.speech_model_status() == (False, "Whisper large-v3 is not downloaded yet")
 
 

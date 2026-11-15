@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""Toasts, message dialogs and confirmations.
+
+Thin wrappers around Adw.Toast and Adw.AlertDialog, so that every window reports and confirms in the same way.
 """
-ui/dialogs.py — Toasts, message dialogs and confirmations.
-"""
+
 from __future__ import annotations
 
 import gi
@@ -12,16 +14,20 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw
 
+# Default time, in seconds, that a toast stays on screen.
 TOAST_TIMEOUT_S = 3
 
 
 def show_toast(overlay: Adw.ToastOverlay, message: str, timeout: int = TOAST_TIMEOUT_S) -> None:
+    """Show *message* as a toast on *overlay* for *timeout* seconds."""
     toast = Adw.Toast(title=message, timeout=timeout)
-    toast.set_use_markup(False)     # messages may contain file names with & or <
+    # Messages may contain file names with "&" or "<", which markup parsing would reject or misrender.
+    toast.set_use_markup(False)
     overlay.add_toast(toast)
 
 
 def show_message_dialog(parent, heading: str, body: str) -> None:
+    """Show a modal dialog with a single OK button, presented over *parent*."""
     dialog = Adw.AlertDialog(heading=heading, body=body)
     dialog.add_response("ok", "OK")
     dialog.set_default_response("ok")
@@ -29,6 +35,7 @@ def show_message_dialog(parent, heading: str, body: str) -> None:
 
 
 def show_error_dialog(parent, message: str) -> None:
+    """Show *message* in a dialog titled "Error"."""
     show_message_dialog(parent, "Error", message)
 
 
@@ -44,11 +51,10 @@ def confirm(
     cancel_label: str = "Cancel",
     destructive: bool = True,
 ) -> None:
-    """
-    Asks a two-way question and calls *on_accept()* only on the accept answer.
+    """Ask a two-way question and call *on_accept()* only when the user gives the accept answer.
 
-    A destructive confirmation defaults to the safe (cancel) answer; a
-    suggested one defaults to accepting.
+    A destructive confirmation defaults to the safe (cancel) answer; a suggested one defaults to accepting.
+    Closing the dialog without choosing counts as cancelling.
     """
     dialog = Adw.AlertDialog(heading=heading, body=body)
     dialog.add_response(cancel_id, cancel_label)

@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/pdf_tab/options.py — The PDF tab's per-book option rows.
+"""The per-book option rows of the PDF tab.
 
-Output format, page numbers, contrast enhancement and "Force image mode".
-Changes are remembered between sessions, except while an option is being
-*loaded* (from the remembered choices or from an interrupted job): that is
-state to show, not a new preference to save.
+Output format, page numbers, contrast enhancement and "Force image mode". Changes are remembered between sessions,
+except that the switches and the image mode are not saved while they are being *loaded* (from the remembered choices
+or from an interrupted job): that is state to show, not a new preference to save.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -30,24 +29,32 @@ from ui.widgets import make_icon_prefix, string_list, switch_row
 
 
 class OutputFormatChoice(NamedTuple):
+    """One selectable output format: its stored id, its label in the combo row and a subtitle explaining it."""
+
     id: str
     label: str
     subtitle: str
 
 
 class ImageModeChoice(NamedTuple):
+    """One selectable image mode: its stored id, its label in the combo row and the texts explaining it."""
+
     id: str
     label: str
-    subtitle: str           # shown under the "Force image mode" row
-    language_subtitle: str  # shown under the OCR language row
+    # Shown under the "Force image mode" row.
+    subtitle: str
+    # Shown under the OCR language row, which the image mode makes more or less relevant.
+    language_subtitle: str
 
 
+# The order of the choices is the order of the rows in the combo box; the selected index is mapped back through it.
 OUTPUT_FORMAT_CHOICES = [
     OutputFormatChoice(OUTPUT_TXT, "Text file", "A plain .txt file, as before"),
     OutputFormatChoice(OUTPUT_PDF, "Searchable PDF", "One PDF you can select and search text in \u2014 no .txt file"),
     OutputFormatChoice(OUTPUT_BOTH, "Text file + Searchable PDF", "Both outputs from the same extraction pass"),
 ]
 
+# Must follow the order of IMAGE_MODES: set_image_mode() selects a row by the index of the mode in IMAGE_MODES.
 IMAGE_MODE_CHOICES = [
     ImageModeChoice(
         IMAGE_MODE_AUTO, "Auto",
@@ -72,14 +79,16 @@ _OUTPUT_FORMAT_IDS = [choice.id for choice in OUTPUT_FORMAT_CHOICES]
 
 
 def image_mode_choice(mode: str) -> ImageModeChoice:
+    """Return the ImageModeChoice whose id is *mode*."""
     return next(choice for choice in IMAGE_MODE_CHOICES if choice.id == mode)
 
 
 class BookOptions:
-    """
-    :param on_image_mode_changed: called with the image-mode choice whenever
-        the selection changes or is loaded, so the language row's subtitle
-        can follow it.
+    """The option rows of the PDF tab and their current values.
+
+    Args:
+        on_image_mode_changed: Called with the ImageModeChoice whenever the selection changes or is loaded, so that
+            the subtitle of the language row can follow it.
     """
 
     def __init__(self, on_image_mode_changed):
@@ -102,13 +111,15 @@ class BookOptions:
         self._build_image_mode_row()
 
     def add_to(self, group: Adw.PreferencesGroup) -> None:
+        """Add the option rows to *group*, in display order."""
         for row in (self._format_row, self._numbers_row, self._enhance_row, self._mode_row):
             group.add(row)
 
-    # ── Current values ────────────────────────────────────────────────
+    # --- Current values ---
 
     @property
     def output_format(self) -> str:
+        """The id of the selected output format; plain text when nothing is selected."""
         selected = self._format_row.get_selected()
         if 0 <= selected < len(OUTPUT_FORMAT_CHOICES):
             return OUTPUT_FORMAT_CHOICES[selected].id
@@ -116,33 +127,39 @@ class BookOptions:
 
     @property
     def page_numbers(self) -> bool:
+        """Whether page-number markers are added to the text output."""
         return self._numbers_switch.get_active()
 
     @property
     def enhance_contrast(self) -> bool:
+        """Whether the rendered page images get a contrast adjustment before OCR."""
         return self._enhance_switch.get_active()
 
     @property
     def image_mode(self) -> str:
+        """The id of the selected image mode; "auto" when nothing is selected."""
         selected = self._mode_row.get_selected()
         return IMAGE_MODE_CHOICES[selected].id if 0 <= selected < len(IMAGE_MODE_CHOICES) else IMAGE_MODE_AUTO
 
-    # ── Loading ───────────────────────────────────────────────────────
+    # --- Loading ---
 
     def load_remembered(self) -> None:
-        """Puts the options back to the user's remembered choices."""
+        """Put the options back to the remembered choices of the user."""
         with self._loading_guard():
             self._numbers_switch.set_active(bool(app_settings.get(saved_settings.PDF_PAGE_NUMBERS, True)))
             self._enhance_switch.set_active(bool(app_settings.get(saved_settings.PDF_ENHANCE_CONTRAST, False)))
             self.set_image_mode(app_settings.get(saved_settings.PDF_IMAGE_MODE, IMAGE_MODE_AUTO))
 
     def load_from_job(self, data: dict) -> None:
-        """
-        Restores every option to exactly what the interrupted job will use on
-        resume, so the switches never show something different from what
-        pressing "Resume" is about to do.
+        """Restore every option to exactly what the interrupted job will use on resume.
+
+        The switches then never show something different from what pressing "Resume" is about to do.
+
+        Note:
+            The output format is selected outside the loading guard, so it is also saved as the remembered format.
         """
         with self._loading_guard():
+            # Progress files written before the Auto/On/Off dropdown only have the old boolean "force_image_mode".
             self.set_image_mode(data.get("image_mode", data.get("force_image_mode")))
             self._enhance_switch.set_active(bool(data.get("enhance_contrast")))
             self._numbers_switch.set_active(bool(data.get("page_numbers", True)))
@@ -151,11 +168,11 @@ class BookOptions:
             self._format_row.set_selected(_OUTPUT_FORMAT_IDS.index(saved_format))
 
     def set_image_mode(self, mode) -> None:
-        """Selects *mode* and refreshes the explanatory subtitles."""
+        """Select *mode* and refresh the explanatory subtitles."""
         self._mode_row.set_selected(IMAGE_MODES.index(normalize_image_mode(mode)))
         self._refresh_image_mode_subtitles()
 
-    # ── Row construction ──────────────────────────────────────────────
+    # --- Row construction ---
 
     def _build_format_row(self) -> None:
         row = Adw.ComboRow()
@@ -166,6 +183,7 @@ class BookOptions:
         row.set_selected(_OUTPUT_FORMAT_IDS.index(saved_format) if saved_format in _OUTPUT_FORMAT_IDS else 0)
         row.connect("notify::selected", self._on_format_changed)
         self._format_row = row
+        # The row was populated before the handler was connected: show the subtitle of the initial selection.
         self._on_format_changed(row, None)
 
     def _build_image_mode_row(self) -> None:
@@ -177,7 +195,7 @@ class BookOptions:
         self.set_image_mode(app_settings.get(saved_settings.PDF_IMAGE_MODE, IMAGE_MODE_AUTO))
         row.connect("notify::selected", self._on_image_mode_selected)
 
-    # ── Change handlers ───────────────────────────────────────────────
+    # --- Change handlers ---
 
     def _on_format_changed(self, _row, _param) -> None:
         app_settings.set(saved_settings.OCR_OUTPUT_FORMAT, self.output_format)
@@ -200,6 +218,7 @@ class BookOptions:
 
     @contextlib.contextmanager
     def _loading_guard(self):
+        """Suppress saving to the settings while options are loaded (state to show, not a new preference)."""
         self._loading = True
         try:
             yield

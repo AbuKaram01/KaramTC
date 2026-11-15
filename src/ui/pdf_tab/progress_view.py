@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/pdf_tab/progress_view.py — The progress card shown while a book is extracted.
-"""
+"""The progress card shown while a book is extracted."""
+
 from __future__ import annotations
 
 from core.book import events
@@ -11,7 +10,11 @@ from ui.progress_frame import ProgressFrame
 
 
 class ProgressCard(ProgressFrame):
-    """Renders the pipeline's progress events (see core/book/events.py)."""
+    """Render the progress events of the book pipeline (see core/book/events.py).
+
+    Args:
+        on_stop: The "clicked" handler of the Stop button.
+    """
 
     def __init__(self, on_stop):
         super().__init__(on_stop)
@@ -27,15 +30,17 @@ class ProgressCard(ProgressFrame):
         }
 
     def start(self, pdf_name: str) -> None:
+        """Reset the card for a new job on the PDF called *pdf_name*."""
         self._skipped_pages = 0
         self.reset(f"Preparing — {pdf_name}")
 
     def update(self, kind: str, *args) -> None:
+        """Show one progress event; *kind* is one of the constants in core/book/events.py. Unknown kinds are ignored."""
         handler = self._handlers.get(kind)
         if handler:
             handler(*args)
 
-    # ── Event handlers ────────────────────────────────────────────────
+    # --- Event handlers ---
 
     def _skipped_suffix(self) -> str:
         return f" \u2022 {self._skipped_pages} skipped" if self._skipped_pages else ""
@@ -61,6 +66,7 @@ class ProgressCard(ProgressFrame):
         self._detail.set_text("Native text — extracted directly")
 
     def _on_ocr(self, position, total):
+        # The event arrives when OCR of the page starts, so the bar counts only the pages that are already finished.
         self._set_progress(
             (position - 1) / total if total else 0, f"Page {position} of {total}{self._skipped_suffix()}",
         )

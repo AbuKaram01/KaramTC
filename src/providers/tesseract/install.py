@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-providers/tesseract/install.py — Is Tesseract installed, and how to install it.
-"""
+"""Is Tesseract installed, and how to install it."""
+
 from __future__ import annotations
 
 import shutil
@@ -13,7 +12,7 @@ from providers.tesseract import program
 
 
 def is_installed() -> bool:
-    """True if the 'tesseract' binary is on the system PATH (or, on Windows, in its installer's folder)."""
+    """Return True if the 'tesseract' binary is on the system PATH (or, on Windows, in its installer's folder)."""
     return (
         shutil.which("tesseract") is not None
         or program.bundled_path() is not None
@@ -22,18 +21,20 @@ def is_installed() -> bool:
 
 
 class _PackageManager(NamedTuple):
-    executable: str         # looked up on PATH to detect the package manager
+    """The install commands of one package manager."""
+
+    # Looked up on PATH to detect the package manager.
+    executable: str
     install_tesseract: str
-    install_language: str   # template; "{lang}" is replaced when present
+    # A template; "{lang}" is replaced when present.
+    install_language: str
     install_osd: str
 
 
-# Checked in order; the first package manager found on PATH wins. Language
-# pack and osd package names are verified per distro: Fedora's osd package is
-# "tesseract-osd" (not "tesseract-langpack-osd"), and Homebrew's base formula
-# already bundles eng + osd while "tesseract-lang" installs every language.
-# Package managers with less predictable names (zypper, …) are deliberately
-# absent: a wrong guess is worse than a generic pointer.
+# Checked in order; the first package manager found on PATH wins. Language pack and osd package names are verified per
+# distro: Fedora's osd package is "tesseract-osd" (not "tesseract-langpack-osd"), and Homebrew's base formula already
+# bundles eng + osd while "tesseract-lang" installs every language. Package managers with less predictable names
+# (zypper, ...) are deliberately absent: a wrong guess is worse than a generic pointer.
 _PACKAGE_MANAGERS = [
     _PackageManager("apt", "sudo apt install tesseract-ocr",
                     "sudo apt install tesseract-ocr-{lang}", "sudo apt install tesseract-ocr-osd"),
@@ -51,14 +52,17 @@ _PACKAGE_MANAGERS = [
 
 
 def _detect_package_manager() -> _PackageManager | None:
+    """Return the first known package manager found on PATH, or None."""
     return next((pm for pm in _PACKAGE_MANAGERS if shutil.which(pm.executable)), None)
 
 
 def install_hint(lang: str | None = None) -> str:
-    """
-    One-line command to install Tesseract itself (lang=None) or a single
-    language pack (lang="ara", say), using the package manager detected on
-    this machine.
+    """Return a one-line command to install Tesseract itself, or a single language pack.
+
+    The command is for the package manager detected on this machine.
+
+    Args:
+        lang: A language code such as "ara" to get the command for that language pack; None for Tesseract itself.
     """
     manager = _detect_package_manager()
     if manager is None:
@@ -69,7 +73,7 @@ def install_hint(lang: str | None = None) -> str:
 
 
 def osd_install_hint() -> str:
-    """One-line command to install the orientation/script data file (osd)."""
+    """Return a one-line command to install the orientation and script data file (osd)."""
     manager = _detect_package_manager()
     if manager is None:
         return "Install the Tesseract orientation data (osd) using your system's package manager."

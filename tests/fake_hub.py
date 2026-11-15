@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """A local stand-in for the Hugging Face model repository, used by the downloader tests and the GUI checks."""
 import hashlib
 import http.server

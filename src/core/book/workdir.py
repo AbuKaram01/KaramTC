@@ -1,48 +1,53 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/book/workdir.py — The per-book working folder ("<book>_pages").
+"""The per-book working folder ("<book>_pages").
 
-It holds one JPEG per scanned page and, for searchable-PDF output, one
-single-page PDF fragment per OCR'd page. The folder is named after the book,
-so it may pre-exist as an unrelated user folder: only files this app creates
-(see _WORK_FILE_PATTERN) are ever touched.
+It holds one JPEG per scanned page and, for searchable-PDF output, one single-page PDF fragment per OCR'd page.
+The folder is named after the book, so it may already exist as an unrelated user folder. Only files that this
+application creates (see _WORK_FILE_PATTERN) are ever touched.
 """
+
 from __future__ import annotations
 
 import contextlib
 import os
 import re
 
+# The names of the files this application creates in the working folder: page images, PDF fragments and their
+# temporary ".part" files.
 _WORK_FILE_PATTERN = re.compile(r"^page_\d{5}\.(jpg|pdf)(\.part)?$")
 _IMAGE_NAME_PREFIX = "page_"
 _IMAGE_NAME_SUFFIX = ".jpg"
-_JPEG_END_MARKER = b"\xff\xd9"      # cannot occur inside the compressed data
+# The JPEG end-of-image marker. It cannot occur inside the compressed data.
+_JPEG_END_MARKER = b"\xff\xd9"
 _JPEG_TAIL_BYTES = 32
 _MIN_JPEG_SIZE = 4
 _PART_SUFFIX = ".part"
 
 
 def _page_file_path(images_dir: str, page_index: int, extension: str) -> str:
+    """Return the path of a per-page file; the page number in the name is 1-based and padded to five digits."""
     return os.path.join(images_dir, f"page_{page_index + 1:05d}.{extension}")
 
 
 def page_image_path(images_dir: str, page_index: int) -> str:
+    """Return the path of the JPEG image of a page."""
     return _page_file_path(images_dir, page_index, "jpg")
 
 
 def page_fragment_path(images_dir: str, page_index: int) -> str:
+    """Return the path of the single-page PDF fragment that OCR produced for a page."""
     return _page_file_path(images_dir, page_index, "pdf")
 
 
 def part_path(path: str) -> str:
-    """Temporary name a file is written under until it is complete."""
+    """Return the temporary name under which a file is written until it is complete."""
     return path + _PART_SUFFIX
 
 
 def write_bytes_atomically(path: str, content: bytes) -> None:
-    """Writes under a temporary name and renames, so a crash never leaves a half-written file."""
+    """Write *content* under a temporary name and rename it, so that a crash never leaves a half-written file."""
     temporary = part_path(path)
     with open(temporary, "wb") as temporary_file:
         temporary_file.write(content)
@@ -50,15 +55,15 @@ def write_bytes_atomically(path: str, content: bytes) -> None:
 
 
 def remove_quietly(path: str) -> None:
+    """Remove a file, ignoring any error."""
     with contextlib.suppress(OSError):
         os.remove(path)
 
 
 def image_is_complete(path: str) -> bool:
-    """
-    True if *path* is a whole JPEG: non-empty and ending with the JPEG
-    end-of-image marker. Catches page images truncated by a crash in a run
-    from an earlier version.
+    """Return True if *path* is a whole JPEG: not trivially small and ending with the JPEG end-of-image marker.
+
+    This catches page images that were truncated by a crash in a run from an earlier version.
     """
     try:
         size = os.path.getsize(path)
@@ -72,6 +77,7 @@ def image_is_complete(path: str) -> bool:
 
 
 def _page_index_from_image_name(file_name: str) -> int | None:
+    """Return the zero-based page index encoded in an image file name, or None if the name does not match."""
     if not (file_name.startswith(_IMAGE_NAME_PREFIX) and file_name.endswith(_IMAGE_NAME_SUFFIX)):
         return None
     try:
@@ -81,9 +87,9 @@ def _page_index_from_image_name(file_name: str) -> int | None:
 
 
 def find_complete_page_images(images_dir: str) -> dict[int, str]:
-    """
-    {page_index: path} of the page images already in the working folder.
-    Truncated ones are deleted (and so redone) rather than fed to OCR.
+    """Return ``{page_index: path}`` for the page images already in the working folder.
+
+    Truncated images are deleted, and therefore rendered again, instead of being fed to OCR.
     """
     found: dict[int, str] = {}
     if not os.path.isdir(images_dir):
@@ -101,10 +107,9 @@ def find_complete_page_images(images_dir: str) -> dict[int, str]:
 
 
 def remove_work_dir(images_dir: str) -> None:
-    """
-    Deletes the working folder's page images/fragments and then the folder —
-    but only if nothing else is left in it. Wiping it with rmtree would
-    destroy the files of an unrelated user folder that shares the name.
+    """Delete the page images and fragments in the working folder, then the folder itself if nothing else is left.
+
+    Wiping the folder with rmtree would destroy the files of an unrelated user folder that shares the name.
     """
     try:
         names = os.listdir(images_dir)
@@ -114,4 +119,4 @@ def remove_work_dir(images_dir: str) -> None:
         if _WORK_FILE_PATTERN.match(name):
             remove_quietly(os.path.join(images_dir, name))
     with contextlib.suppress(OSError):
-        os.rmdir(images_dir)          # only succeeds when it is now empty
+        os.rmdir(images_dir)  # Only succeeds when the folder is empty now.

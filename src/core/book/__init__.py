@@ -1,15 +1,16 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/book — PDF book text extraction (hybrid: native text + OCR).
+"""PDF book text extraction that combines the native text layer of a page with OCR.
 
-Typical use:
+Typical use::
+
     request = BookRequest(pdf_path, "tesseract", book_paths(pdf_path, out_dir), BookJobSettings(lang="eng"))
     result = run_book_extraction(request, progress_cb, cancel_event)
 
-No GTK dependency — can be tested independently.
+The package has no GTK dependency, so it can be tested on its own.
 """
+
 from core.book import events
 from core.book.classification import classify_pages, native_text_looks_garbled
 from core.book.constants import (

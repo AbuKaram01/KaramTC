@@ -37,7 +37,7 @@ def make_picture(folder, name=PICTURE_NAME):
     return str(path)
 
 
-# -- nothing to do ------------------------------------------------------------------------------------------
+# --- Nothing to do ---
 
 def test_ascii_paths_are_given_as_they_are(windows, tmp_path):
     work = tmp_path / "work"
@@ -66,7 +66,7 @@ def test_a_missing_tessdata_dir_stays_missing(windows, tmp_path):
         assert safe.tessdata_dir is None
 
 
-# -- the picture and the output ---------------------------------------------------------------------------
+# --- The picture and the output ---
 
 def test_a_picture_with_arabic_letters_is_copied_into_the_working_folder(windows, tmp_path):
     work = tmp_path / "work"
@@ -111,14 +111,16 @@ def test_a_picture_that_cannot_be_copied_is_given_as_it_is(windows, monkeypatch,
         assert safe.image == image
 
 
-# -- the language data --------------------------------------------------------------------------------------
+# --- The language data ---
 
 def test_language_data_in_an_arabic_folder_is_given_by_its_short_name(windows, monkeypatch, tmp_path):
     tessdata = tmp_path / ARABIC / "tessdata"
     tessdata.mkdir(parents=True)
     work = tmp_path / "work"
     work.mkdir()
-    monkeypatch.setattr(ascii_paths, "short_path", lambda path: "C:\\IO3F2D~1\\TESSDA~1" if path == str(tessdata) else None)
+    monkeypatch.setattr(
+        ascii_paths, "short_path", lambda path: "C:\\IO3F2D~1\\TESSDA~1" if path == str(tessdata) else None
+    )
     with safe_arguments(str(tmp_path / "page.png"), str(work / "result"), str(tessdata), str(work)) as safe:
         assert safe.tessdata_dir == "C:\\IO3F2D~1\\TESSDA~1"
         assert safe.cwd == str(work) and safe.output_base == "result"
@@ -161,7 +163,7 @@ def test_with_neither_short_name_nor_junction_the_path_is_given_as_it_is(windows
         assert safe.tessdata_dir == str(tessdata)
 
 
-# -- the program ---------------------------------------------------------------------------------------------
+# --- The program ---
 
 def test_a_program_path_with_arabic_letters_is_started_by_its_short_name(windows, monkeypatch):
     path = "C:\\Users\\%s\\AppData\\Local\\tesseract\\tesseract.exe" % ARABIC
@@ -192,7 +194,7 @@ def test_the_program_that_is_run_is_given_in_its_short_form(monkeypatch, tmp_pat
     assert program.find_tesseract() == str(exe)                    # What is shown and checked is the real path.
 
 
-# -- the whole run -------------------------------------------------------------------------------------------
+# --- The whole run ---
 
 @pytest.fixture
 def arabic_temp(monkeypatch, tmp_path):
@@ -205,7 +207,8 @@ def arabic_temp(monkeypatch, tmp_path):
 
 @pytest.fixture
 def tesseract_is_installed(monkeypatch):
-    """These runs use a stand-in for tesseract.exe, so the machine need not have the real one (the CI runners do not)."""
+    """These runs use a stand-in for tesseract.exe, so the machine need not have the real one (the CI runners do "
+    "not)."""
     monkeypatch.setattr(engine, "is_installed", lambda: True)
 
 
@@ -221,7 +224,9 @@ def fake_tesseract(seen):
     return run
 
 
-def test_tesseract_is_never_given_a_non_ascii_character(windows, tesseract_is_installed, arabic_temp, monkeypatch, tmp_path):
+def test_tesseract_is_never_given_a_non_ascii_character(
+    windows, tesseract_is_installed, arabic_temp, monkeypatch, tmp_path
+):
     seen = {}
     monkeypatch.setattr(engine, "run_tesseract", fake_tesseract(seen))
     monkeypatch.setattr(ascii_paths, "short_path", lambda path: "C:\\TESSDA~1")

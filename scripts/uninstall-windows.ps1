@@ -1,16 +1,25 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Removes what scripts\install-windows.ps1 created. Your downloaded models, OCR language data and settings are kept
-# unless you ask for them to be deleted:
-#
-#     powershell -ExecutionPolicy Bypass -File scripts\uninstall-windows.ps1 [-RemoveGtk] [-RemoveData]
+# uninstall-windows.ps1 - removes what scripts\install-windows.ps1 created.
 
+<#
+.SYNOPSIS
+    Removes what scripts\install-windows.ps1 created.
+.DESCRIPTION
+    Your downloaded models, OCR language data and settings are kept unless you ask for them to be deleted.
+.PARAMETER RemoveGtk
+    Also delete the GTK runtime that a script downloaded (%LOCALAPPDATA%\io.github.AbuKaram01.KaramTC\gtk).
+.PARAMETER RemoveData
+    Also delete downloaded models, OCR language data and settings. Cannot be undone.
+.PARAMETER Force
+    Do not ask for confirmation before -RemoveData deletes anything.
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File scripts\uninstall-windows.ps1 -RemoveGtk -RemoveData
+#>
 [CmdletBinding()]
 param(
-    # Also delete the GTK runtime that a script downloaded (%LOCALAPPDATA%\io.github.AbuKaram01.KaramTC\gtk).
     [switch]$RemoveGtk,
-    # Also delete downloaded models, OCR language data and settings. Cannot be undone.
     [switch]$RemoveData,
     [switch]$Force
 )
@@ -19,7 +28,8 @@ Set-StrictMode -Version 2.0
 
 # This script is for Windows only; say so clearly instead of failing on a missing %LOCALAPPDATA%.
 if ($env:OS -ne 'Windows_NT') {
-    Write-Host 'ERR This script is for Windows. On Linux use scripts/install-debian.sh or scripts/install-arch.sh.' -ForegroundColor Red
+    Write-Host ('ERR This script is for Windows. On Linux use scripts/install-debian.sh or ' +
+                'scripts/install-arch.sh.') -ForegroundColor Red
     exit 1
 }
 $ErrorActionPreference = 'Stop'
@@ -41,15 +51,19 @@ if ($RemoveData -and -not $Force) {
 
 Remove-IfPresent (Join-Path ([Environment]::GetFolderPath('Programs')) 'KaramTC.lnk')
 Remove-IfPresent (Join-Path $ProjectRoot '.venv')
-Remove-IfPresent (Join-Path $DataRoot 'tesseract')      # The portable copy the installer fetched; not your data.
+# The portable Tesseract the installer fetched; it is not your data.
+Remove-IfPresent (Join-Path $DataRoot 'tesseract')
+# The GTK runtime the installer carried (the note beside it says it was prepared by the build, not by you).
 $carriedGtk = Join-Path $ProjectRoot 'gtk'
-if (Test-Path (Join-Path $carriedGtk 'gvsbuild-release.txt')) { Remove-IfPresent $carriedGtk }      # The runtime the installer carried.
+if (Test-Path (Join-Path $carriedGtk 'gvsbuild-release.txt')) { Remove-IfPresent $carriedGtk }
 [Environment]::SetEnvironmentVariable('KARAMTC_GTK_DIR', $null, 'User')
 
 if ($RemoveGtk) { Remove-IfPresent (Join-Path $DataRoot 'gtk') }
 if ($RemoveData) {
     Remove-IfPresent $ConfigRoot
-    Get-ChildItem $DataRoot -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'gtk' -or $RemoveGtk } | ForEach-Object { Remove-IfPresent $_.FullName }
+    Get-ChildItem $DataRoot -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne 'gtk' -or $RemoveGtk } |
+        ForEach-Object { Remove-IfPresent $_.FullName }
     if ((Test-Path $DataRoot) -and -not (Get-ChildItem $DataRoot -Force)) { Remove-Item $DataRoot -Force }
 }
 

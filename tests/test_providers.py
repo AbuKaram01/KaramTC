@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""The Tesseract provider: option normalisation, the command line, failure handling and language data."""
+
 import os
 import subprocess
 

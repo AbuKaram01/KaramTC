@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/media_tab/tab.py — The Audio/Video tab: choose a recording, get its text.
+"""The Audio/Video tab: choose a recording, get its text.
 
-Handles UI only; all transcription logic lives in core/media.
+The module handles the UI only; all transcription logic lives in core/media. Transcription runs in a worker thread
+that reports back to the GTK main loop with GLib.idle_add.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -36,17 +37,26 @@ from ui.widgets import (
     add_file_drop_target, centered_row, make_icon_prefix, pill_button, scrolled_clamp, status_page,
 )
 
+# Pages of the tab's stack: the tab itself, or the "speech engine is not installed" page shown in its place.
 _PAGE_MAIN, _PAGE_MISSING = "main", "missing"
+# Modes of the main page: choosing a file and options, transcribing, and showing the finished transcript.
 _MODE_SELECT, _MODE_PROGRESS, _MODE_DONE = "select", "progress", "done"
+# Title of the file row while no file is chosen.
 _NO_FILE_TITLE = "\u2014"
 
 
 class MediaTab(Adw.Bin):
+    """The Audio/Video tab: choose a recording, set the options, transcribe it, then open or copy the text.
+
+    The main page moves between three modes (choose, progress, done). When the speech engine is not installed, the
+    tab shows a page with install instructions instead.
+
+    Args:
+        on_running_changed: Called whenever a transcription starts or ends.
+        on_open_speech_settings: Opens the Speech Settings dialog.
+    """
+
     def __init__(self, on_running_changed=None, on_open_speech_settings=None):
-        """
-        :param on_running_changed:      called whenever a transcription starts or ends.
-        :param on_open_speech_settings: opens the Speech Settings dialog.
-        """
         super().__init__()
         self._on_running_changed = on_running_changed
         self._on_open_speech_settings = on_open_speech_settings
@@ -62,18 +72,20 @@ class MediaTab(Adw.Bin):
         self._pages.add_named(self._build_main_page(), _PAGE_MAIN)
         self.refresh()
 
-    # ── Public interface (used by the main window) ────────────────────
+    # --- Public interface (used by the main window) ---
 
     def is_running(self) -> bool:
+        """Whether a transcription is running."""
         return self._is_running
 
     def refresh(self) -> None:
-        """Re-checks the speech engine and model — called after Speech Settings changes."""
-        importlib.invalidate_caches()        # a package installed while the app runs is found too
+        """Re-check the speech engine and model; called after Speech Settings changed."""
+        # A package that was installed while the app runs must be found as well.
+        importlib.invalidate_caches()
         self._pages.set_visible_child_name(_PAGE_MAIN if speech_engine_installed() else _PAGE_MISSING)
         self._update_banners()
 
-    # ── Layout ────────────────────────────────────────────────────────
+    # --- Layout ---
 
     def _build_main_page(self) -> Adw.ToastOverlay:
         self._toast_overlay = Adw.ToastOverlay()
@@ -114,7 +126,7 @@ class MediaTab(Adw.Bin):
         self._outer.append(self._file_group)
 
         self._file_row = Adw.ActionRow()
-        self._file_row.set_use_markup(False)       # file names may contain & or <
+        self._file_row.set_use_markup(False)  # File names may contain "&" or "<".
         self._file_row.set_title(_NO_FILE_TITLE)
         self._file_row.add_prefix(make_icon_prefix("audio-x-generic-symbolic"))
         change_button = Gtk.Button(label="Change")
@@ -148,6 +160,7 @@ class MediaTab(Adw.Bin):
         self._outer.append(self._start_button)
 
     def _set_mode(self, mode: str) -> None:
+        """Show the widgets that belong to *mode* and hide the others."""
         has_file = bool(self._media_path)
         selecting = mode == _MODE_SELECT
         show_empty = selecting and not has_file
@@ -180,7 +193,7 @@ class MediaTab(Adw.Bin):
         if self._on_running_changed:
             self._on_running_changed()
 
-    # ── Choosing the file ─────────────────────────────────────────────
+    # --- Choosing the file ---
 
     def _on_drop(self, _target, value, _x, _y) -> bool:
         if self._is_running:
@@ -242,7 +255,7 @@ class MediaTab(Adw.Bin):
     def _on_output_folder_changed(self) -> None:
         self._update_banners()
 
-    # ── Settings and saved progress ───────────────────────────────────
+    # --- Settings and saved progress ---
 
     def _on_open_settings_clicked(self, *_) -> None:
         if self._on_open_speech_settings:
@@ -253,7 +266,7 @@ class MediaTab(Adw.Bin):
             self._journal.drop(self._media_path)
         self._update_banners()
 
-    # ── Starting ──────────────────────────────────────────────────────
+    # --- Starting ---
 
     def _on_start_clicked(self, *_) -> None:
         if not self._media_path:
@@ -291,6 +304,7 @@ class MediaTab(Adw.Bin):
         threading.Thread(target=self._worker, args=(request, self._cancel_event), daemon=True).start()
 
     def _worker(self, request, cancel_event: threading.Event) -> None:
+        """Run the transcription on a worker thread; the outcome goes back to the main loop through GLib.idle_add."""
         try:
             result = run_media_transcription(request, self._progress_cb, cancel_event)
             GLib.idle_add(self._on_done, result)
@@ -300,15 +314,18 @@ class MediaTab(Adw.Bin):
             GLib.idle_add(self._on_error, str(exc))
 
     def _on_stop(self, *_) -> None:
+        """Ask the worker to stop; it finishes with TranscriptionCancelledError at its next checkpoint."""
         self._cancel_event.set()
         self._progress_card.show_stopping()
 
-    # ── Progress and completion (called on the main thread) ───────────
+    # --- Progress and completion ---
 
     def _progress_cb(self, kind: str, *args) -> None:
+        """Progress callback of the pipeline: runs on the worker thread, so it forwards the event to the main loop."""
         GLib.idle_add(self._on_progress_event, kind, *args)
 
     def _on_progress_event(self, kind: str, *args) -> bool:
+        """Render a forwarded progress event on the main thread."""
         self._progress_card.update(kind, *args)
         return GLib.SOURCE_REMOVE
 

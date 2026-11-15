@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/media_tab/options.py — The Audio/Video tab's option rows: language, format, timestamps.
+"""The Audio/Video tab's option rows: spoken language, output format, text layout and timestamps.
 
 Choices are remembered between sessions.
 """
+
 from __future__ import annotations
 
 from typing import NamedTuple
@@ -22,15 +22,25 @@ from core.media.constants import TEXT_LAYOUT_CONTINUOUS, TEXT_LAYOUT_LINES
 from ui import saved_settings
 from ui.widgets import make_icon_prefix, string_list, switch_row
 
+# Label of the first entry of the language list, which stands for "let Whisper detect the language".
 AUTO_DETECT_LABEL = "Auto-detect"
 
 
 class FormatChoice(NamedTuple):
+    """One entry of a choice row (used for output formats and for text layouts).
+
+    Attributes:
+        id: The value that is stored in the settings and passed on to the transcription job.
+        label: The text shown in the drop-down list.
+        subtitle: The explanation shown under the row while this entry is selected.
+    """
+
     id: str
     label: str
     subtitle: str
 
 
+# Output formats, in the order of the drop-down list. The first one is the default.
 FORMAT_CHOICES = [
     FormatChoice(OUTPUT_TXT, "Text file", "The words only — one line per spoken segment"),
     FormatChoice(OUTPUT_SRT, "Subtitles (SRT)", "Timed subtitles that most video players load"),
@@ -38,18 +48,32 @@ FORMAT_CHOICES = [
 ]
 _FORMAT_IDS = [choice.id for choice in FORMAT_CHOICES]
 
+# Text layouts of a plain text file, in the order of the drop-down list. The first one is the default.
 LAYOUT_CHOICES = [
     FormatChoice(TEXT_LAYOUT_CONTINUOUS, "Continuous text", "Everything as one flowing text, with no line breaks"),
-    FormatChoice(TEXT_LAYOUT_LINES, "One line per segment", "A new line for each spoken segment — can start each line with its time"),
+    FormatChoice(
+        TEXT_LAYOUT_LINES,
+        "One line per segment",
+        "A new line for each spoken segment — can start each line with its time",
+    ),
 ]
 _LAYOUT_IDS = [choice.id for choice in LAYOUT_CHOICES]
 _LANGUAGES = languages_by_name()
+# Whisper language code per row of the language list; the extra first row (None) is "Auto-detect".
 _LANGUAGE_CODES: list[str | None] = [None] + [code for code, _name in _LANGUAGES]
 
 
 class MediaOptions:
+    """The option rows of the Audio/Video tab: spoken language, output format, text layout and timestamps.
+
+    Every choice is saved when it changes and restored on the next start. Rows that do not apply to the current
+    output format are disabled.
+
+    Args:
+        on_format_changed: Called with the output format id whenever it changes.
+    """
+
     def __init__(self, on_format_changed=None):
-        """:param on_format_changed: called with the output format id whenever it changes."""
         self._on_format_changed = on_format_changed
         self._build_language_row()
         self._build_format_row()
@@ -63,10 +87,11 @@ class MediaOptions:
         self._update_dependent_rows()
 
     def add_to(self, group: Adw.PreferencesGroup) -> None:
+        """Add the option rows to *group*."""
         for row in (self._language_row, self._format_row, self._layout_row, self._timestamps_row):
             group.add(row)
 
-    # ── Current values ────────────────────────────────────────────────
+    # --- Current values ---
 
     @property
     def language(self) -> str | None:
@@ -76,19 +101,22 @@ class MediaOptions:
 
     @property
     def output_format(self) -> str:
+        """The id of the chosen output format."""
         selected = self._format_row.get_selected()
         return FORMAT_CHOICES[selected].id if 0 <= selected < len(FORMAT_CHOICES) else OUTPUT_TXT
 
     @property
     def text_layout(self) -> str:
+        """The id of the chosen text layout; it applies to text files only."""
         selected = self._layout_row.get_selected()
         return LAYOUT_CHOICES[selected].id if 0 <= selected < len(LAYOUT_CHOICES) else TEXT_LAYOUT_CONTINUOUS
 
     @property
     def timestamps(self) -> bool:
+        """Whether the timestamps switch is on; its row is enabled only for one-line-per-segment text files."""
         return self._timestamps_switch.get_active()
 
-    # ── Construction ──────────────────────────────────────────────────
+    # --- Construction ---
 
     def _build_language_row(self) -> None:
         row = Adw.ComboRow()
@@ -126,7 +154,7 @@ class MediaOptions:
         self._layout_row = row
         self._update_layout_subtitle()
 
-    # ── Change handlers ───────────────────────────────────────────────
+    # --- Change handlers ---
 
     def _on_language_selected(self, _row, _param) -> None:
         app_settings.set(saved_settings.MEDIA_LANGUAGE, self.language or "")
@@ -150,8 +178,11 @@ class MediaOptions:
         self._format_row.set_subtitle(FORMAT_CHOICES[_FORMAT_IDS.index(self.output_format)].subtitle)
 
     def _update_dependent_rows(self) -> None:
-        """Subtitle files always carry times and have no text layout. In a text
-        file, start times only fit the one-line-per-segment layout."""
+        """Enable the text layout and timestamps rows only where they apply.
+
+        Subtitle files always carry times and have no text layout. In a text file, start times only fit the
+        one-line-per-segment layout.
+        """
         is_text = self.output_format == OUTPUT_TXT
         self._layout_row.set_sensitive(is_text)
         self._timestamps_row.set_sensitive(is_text and self.text_layout == TEXT_LAYOUT_LINES)

@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/book/progress.py — Saved progress of an interrupted extraction.
+"""Saved progress of an interrupted extraction.
 
-The progress file is what makes Stop and Resume possible. It may be damaged,
-hand-edited or written by an older version, so it is validated before use: a
-bad file must never be able to crash a resume.
+The progress file is what makes Stop and Resume possible. It may be damaged, hand-edited or written by an older
+version, so it is validated before use: a bad file must never be able to crash a resume.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -24,6 +23,7 @@ STATUS_COMPLETED = "completed"
 
 
 def _is_plain_int(value) -> bool:
+    """Return True for an int that is not a bool (bool is a subclass of int in Python)."""
     return isinstance(value, int) and not isinstance(value, bool)
 
 
@@ -65,6 +65,7 @@ def _has_valid_failed_pages(data: dict) -> bool:
     )
 
 
+# A progress record is usable only if every one of these checks passes.
 _FIELD_CHECKS = (
     _has_status_and_pdf_path,
     _has_valid_completed_pages,
@@ -77,20 +78,30 @@ _FIELD_CHECKS = (
 
 
 def progress_is_sane(data) -> bool:
-    """True if *data* has the shape the extraction pipeline relies on."""
+    """Return True if *data* has the shape that the extraction pipeline relies on."""
     return isinstance(data, dict) and all(check(data) for check in _FIELD_CHECKS)
 
 
 class BookProgress:
-    """Persists extraction progress to disk; enables resuming interrupted extractions."""
+    """The progress record of one extraction, persisted to disk so that an interrupted extraction can be resumed.
+
+    Args:
+        path: The progress file.
+
+    Attributes:
+        path: The progress file.
+        data: The progress record. It is empty until load() succeeds or the pipeline fills it in.
+    """
 
     def __init__(self, path: str):
         self.path = path
         self.data: dict = {}
 
     def load(self) -> bool:
-        """Loads the saved progress; False (and empty data) if there is none or
-        the file isn't a usable progress record."""
+        """Load the saved progress.
+
+        Returns False, leaving ``data`` empty, if there is none or the file is not a usable progress record.
+        """
         self.data = {}
         if not os.path.exists(self.path):
             return False
@@ -105,6 +116,11 @@ class BookProgress:
         return True
 
     def save(self) -> None:
+        """Write the progress record to disk.
+
+        The record is written to a temporary file, flushed to disk and then renamed over the progress file, so
+        that a crash never leaves a half-written progress file behind.
+        """
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
         temporary = self.path + ".tmp"
         with open(temporary, "w", encoding="utf-8") as temporary_file:
@@ -114,18 +130,22 @@ class BookProgress:
         os.replace(temporary, self.path)
 
     def delete(self) -> None:
+        """Remove the progress file. A missing or undeletable file is ignored."""
         with contextlib.suppress(OSError):
             os.remove(self.path)
 
     def is_resumable_for(self, pdf_path: str) -> bool:
+        """Return True if the loaded record is an unfinished job for *pdf_path*."""
         return (
             self.data.get("status") == STATUS_IN_PROGRESS
             and self.data.get("pdf_path") == pdf_path
         )
 
     def pdf_was_replaced(self, pdf_path: str) -> bool:
-        """True if the PDF no longer has the size/mtime it had when the job was
-        saved — resuming would silently mix pages from two different documents."""
+        """Return True if the PDF no longer has the size and modification time it had when the job was saved.
+
+        Resuming in that case would silently mix pages from two different documents.
+        """
         saved = self.data.get("pdf_fingerprint")
         current = pdf_fingerprint(pdf_path)
         return saved is not None and current is not None and list(saved) != list(current)
@@ -133,11 +153,15 @@ class BookProgress:
 
 @dataclass
 class SavedJob:
+    """An interrupted job found on disk, together with the folder it was found in."""
+
     progress: BookProgress
-    output_dir: str | None      # the folder that was searched (None = next to the PDF)
+    # The folder that was searched. None means the folder of the PDF.
+    output_dir: str | None
 
 
 def _load_saved_job(pdf_path: str, output_dir: str | None) -> SavedJob | None:
+    """Return the resumable job for *pdf_path* in *output_dir*, or None."""
     progress = BookProgress(book_paths(pdf_path, output_dir).progress_path)
     if progress.load() and progress.is_resumable_for(pdf_path):
         return SavedJob(progress, output_dir)
@@ -145,12 +169,10 @@ def _load_saved_job(pdf_path: str, output_dir: str | None) -> SavedJob | None:
 
 
 def find_saved_job(pdf_path: str, output_dir: str | None, also_search_pdf_folder: bool = False) -> SavedJob | None:
-    """
-    The interrupted job for *pdf_path* saved in *output_dir*, if any.
+    """Return the interrupted job for *pdf_path* saved in *output_dir*, or None if there is none.
 
-    *also_search_pdf_folder* is for when a book has just been opened: a job
-    interrupted before an output folder was being remembered (or while a
-    different one was) lives next to the PDF, so look there too rather than
+    Set *also_search_pdf_folder* when a book has just been opened. A job that was interrupted before an output
+    folder was being remembered, or while a different one was, lives next to the PDF. Looking there too avoids
     silently starting a second job.
     """
     job = _load_saved_job(pdf_path, output_dir)

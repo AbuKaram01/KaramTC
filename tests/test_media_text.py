@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 AbuKaram01
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Transcript formatting (SRT, VTT, text), output paths, language tables and device and model-folder checks."""
+
 import pytest
 
 from core.media import MEDIA_EXTENSIONS, WHISPER_LANGUAGES, language_name, languages_by_name, output_path_for
@@ -35,14 +40,17 @@ def test_vtt_has_a_header_and_dot_milliseconds():
 
 def test_the_lines_layout_puts_one_segment_on_each_line_with_optional_start_times():
     assert render_text(SEGMENTS, layout="lines") == "Hello there.\nSecond part\n"
-    assert render_text(SEGMENTS, with_timestamps=True, layout="lines") == "[0:00:00] Hello there.\n[1:01:01] Second part\n"
+    assert (
+        render_text(SEGMENTS, with_timestamps=True, layout="lines") == "[0:00:00] Hello there.\n[1:01:01] Second part\n"
+    )
     assert render_text([], layout="lines") == "" and plain_text(SEGMENTS) == "Hello there.\nSecond part"
 
 
 def test_continuous_text_is_the_default_and_flows_without_line_breaks():
     assert render_text(SEGMENTS) == "Hello there. Second part\n"
     assert render(SEGMENTS, "txt") == "Hello there. Second part\n"
-    assert render_text(SEGMENTS, with_timestamps=True) == "Hello there. Second part\n"      # times need the lines layout
+    # times need the lines layout
+    assert render_text(SEGMENTS, with_timestamps=True) == "Hello there. Second part\n"
     assert render_text([Segment(0, 1, "   ")]) == ""
 
 
@@ -53,7 +61,8 @@ def test_continuous_text_keeps_the_spacing_of_each_script():
     assert render_text(chinese) == "你好，欢迎来到这节课。\n"
     mixed = [Segment(0, 1, "Visit"), Segment(1, 2, "东京"), Segment(2, 3, "next year")]
     assert render_text(mixed) == "Visit东京next year\n"
-    assert render_text([Segment(0, 1, "a\n\n b"), Segment(1, 2, "c")]) == "a b c\n"       # inner line breaks are folded away
+    # inner line breaks are folded away
+    assert render_text([Segment(0, 1, "a\n\n b"), Segment(1, 2, "c")]) == "a b c\n"
 
 
 def test_render_rejects_an_unknown_format():

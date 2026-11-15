@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-providers/registry.py — Finds an OCR provider by id and runs it.
-"""
+"""Find an OCR provider by id and run it."""
+
 from __future__ import annotations
 
 import importlib
@@ -13,7 +12,7 @@ from providers.ocr_types import OcrOptions, OcrPageError, OcrResult
 
 
 def _load_provider_ocr(provider_id: str):
-    """Imports `providers.<provider_id>` and returns its ocr() function."""
+    """Import `providers.<provider_id>` and return its ocr() function."""
     try:
         module = importlib.import_module(f"providers.{provider_id}")
     except ModuleNotFoundError:
@@ -32,17 +31,23 @@ def run_ocr(
     cancel_event=None,
     options: OcrOptions | None = None,
 ) -> OcrResult:
-    """
-    Runs OCR on one image with the given provider and language.
+    """Run OCR on one image with the given provider and language.
 
-    :param lang:          Language code passed to the provider (e.g. "ara+eng").
-    :param progress_cb:   Optional callback receiving status messages.
-    :param cancel_event:  Optional threading.Event; when set, the provider
-                          should stop as soon as practical.
-    :param options:       Optional advanced engine settings (see OcrOptions).
+    Args:
+        image_path: The image file to read.
+        provider: The id of the provider package under `providers`.
+        lang: Language code passed to the provider (e.g. "ara+eng").
+        progress_cb: Optional callback receiving status messages.
+        cancel_event: Optional threading.Event; when set, the provider should stop as soon as practical.
+        options: Optional advanced engine settings (see OcrOptions).
 
-    OcrPageError (a failure of this one image) is re-raised as is; any other
-    exception becomes a RuntimeError carrying its message.
+    Returns:
+        The recognized text, with confidence and a searchable PDF if the options asked for them.
+
+    Raises:
+        OcrPageError: OCR failed for this one image; re-raised unchanged so that a job can skip the page.
+        RuntimeError: The image or the provider is missing, or the provider failed in any other way; the message
+            of the original exception is kept.
     """
     if not os.path.isfile(image_path):
         raise RuntimeError(f"File not found: {os.path.basename(image_path)}")

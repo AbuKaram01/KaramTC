@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+"""The Image tab's result screen: editable text plus actions.
+
+The text is shown in an editable view, so the user can correct it before copying or saving.
 """
-ui/image_tab/result_view.py — The Image tab's result screen: editable text plus actions.
-"""
+
 from __future__ import annotations
 
 import gi
@@ -15,6 +17,15 @@ from ui.widgets import dim_label, flat_icon_button, labeled_button, scrolled_cla
 
 
 class ImageResultView(Gtk.Box):
+    """The extracted text in an editable view, with an action bar and an optional OCR confidence line.
+
+    Args:
+        on_new_image: Called when "New image" is pressed.
+        on_copy: Called when the copy button is pressed.
+        on_save_text: Called when "Save as text file" is pressed.
+        on_save_pdf: Called when "Save as searchable PDF" is pressed.
+    """
+
     def __init__(self, on_new_image, on_copy, on_save_text, on_save_pdf):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.append(self._build_action_bar(on_new_image, on_copy, on_save_text, on_save_pdf))
@@ -75,11 +86,16 @@ class ImageResultView(Gtk.Box):
 
     @property
     def text(self) -> str:
-        """The text as currently shown — including the user's edits."""
+        """The text as currently shown, including the user's edits."""
         buffer = self._text_view.get_buffer()
         return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
 
     def show_result(self, text: str, has_searchable_pdf: bool, confidence: float | None) -> None:
+        """Show *text* and the actions available for it.
+
+        The "Save as searchable PDF" button appears only if *has_searchable_pdf*; the confidence line (a percentage)
+        only if *confidence* is not None.
+        """
         self._text_view.get_buffer().set_text(text)
         self._save_pdf_button.set_visible(has_searchable_pdf)
         if confidence is None:

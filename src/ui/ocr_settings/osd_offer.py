@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/ocr_settings/osd_offer.py — Offers to download the orientation data (osd).
-"""
+"""Offer to download the orientation and script detection data (osd)."""
+
 from __future__ import annotations
 
 import threading
@@ -22,13 +21,15 @@ _ERROR_TOAST_TIMEOUT_S = 5
 
 
 class OsdOffer:
-    """
-    PSM 1 and 12 use orientation/script detection, which needs osd.traineddata
-    — a file no language pack contains. With a downloaded language source it
-    is absent unless fetched separately, so offer to fetch it as soon as such
-    a mode is selected (or the source changes to one that lacks it). The
-    System source is left alone: its packages normally include osd, and OCR
-    reports a clear error if not.
+    """Asks the user to download osd.traineddata when the selected page segmentation mode needs it.
+
+    PSM 1 and 12 use orientation and script detection, which needs osd.traineddata, a file that no language pack
+    contains. With a downloaded language source it is absent unless fetched separately, so the offer is made as soon
+    as such a mode is selected, or the source changes to one that lacks the file. The System source is left alone:
+    its packages normally include osd, and OCR reports a clear error if they do not.
+
+    Args:
+        host: The dialog that the offer is presented over and that shows the progress toasts.
     """
 
     def __init__(self, host: Adw.PreferencesDialog):
@@ -36,6 +37,13 @@ class OsdOffer:
         self._download_active = False
 
     def offer_if_needed(self, psm: int, psm_label: str, source: str) -> None:
+        """Show the download offer if *psm* needs osd data that *source* does not have.
+
+        Args:
+            psm: The selected page segmentation mode.
+            psm_label: The short label of that mode, quoted in the message.
+            source: The language source (quality tier) the file would be downloaded into.
+        """
         if (
             not psm_needs_osd(psm)
             or source == SYSTEM_LANG_SOURCE
@@ -68,6 +76,7 @@ class OsdOffer:
         threading.Thread(target=self._download, args=(source,), daemon=True).start()
 
     def _download(self, source: str) -> None:
+        """Download the file on a worker thread; the result is handed to the main loop via idle_add."""
         try:
             tessdata_manager.download(source, tessdata_manager.OSD_CODE)
             GLib.idle_add(self._on_download_done, None)

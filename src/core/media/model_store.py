@@ -1,15 +1,14 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-core/media/model_store.py — Downloads and keeps the Whisper models (large-v3 turbo and large-v3).
+"""Download and keep the Whisper models (large-v3 turbo and large-v3).
 
-Each model is the CTranslate2 conversion published on Hugging Face (MIT
-licence) and lives in its own folder, so both can be kept side by side. The
-download is resumable — an interrupted or cancelled one continues where it
-stopped — and every file is checked against the size and SHA-256 the
-repository reports, so a truncated or corrupt model is never used.
+Each model is the CTranslate2 conversion published on Hugging Face (MIT licence) and lives in its own folder, so
+both can be kept side by side. The download is resumable: an interrupted or cancelled one continues where it
+stopped. Every file is checked against the size and SHA-256 the repository reports, so a truncated or corrupt model
+is never used.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -28,8 +27,8 @@ from core.media.errors import DownloadCancelledError
 MODEL_REVISION = "main"
 HF_BASE_URL = "https://huggingface.co"
 
-# The files faster-whisper needs. The big one goes last, so a model folder
-# without a manifest never looks complete while it is still downloading.
+# The files faster-whisper needs. The big one goes last, so a model folder without a manifest never looks complete
+# while it is still downloading.
 REQUIRED_FILES = ("config.json", "preprocessor_config.json", "tokenizer.json", "vocabulary.json", "model.bin")
 _MANIFEST_NAME = "manifest.json"
 _PART_SUFFIX = ".part"
@@ -37,25 +36,40 @@ _PART_SUFFIX = ".part"
 _CHUNK_SIZE = 1024 * 1024
 _REQUEST_TIMEOUT_S = 30
 
-ProgressCallback = Callable[[int, int, str], None]      # (bytes done, bytes total, what is happening)
+# Called as progress(bytes done, bytes total, what is happening).
+ProgressCallback = Callable[[int, int, str], None]
 
 
 @dataclass(frozen=True)
 class RemoteFile:
+    """One file of the model repository, as the server reports it."""
+
     name: str
     size: int
-    sha256: str | None      # only large (LFS) files carry one
+    # Only large (LFS) files carry a checksum.
+    sha256: str | None
 
 
 @dataclass(frozen=True)
 class WhisperModel:
-    """A Whisper model KaramTC can download."""
-    id: str                 # what is saved in settings.json
+    """A Whisper model KaramTC can download.
+
+    Attributes:
+        id: What is saved in settings.json.
+        label: The name shown to the user.
+        repo: The Hugging Face repository.
+        folder: The folder inside models_root(). The path is built from this, never from the saved id.
+        size_text: The approximate download size, as shown to the user.
+        summary: Finishes the sentence "<label> ..." on the Speech Settings page.
+        recommended: Whether the model is the one suggested to new users.
+    """
+
+    id: str
     label: str
-    repo: str               # the Hugging Face repository
-    folder: str             # inside models_root(); the path is built from this, never from the saved id
+    repo: str
+    folder: str
     size_text: str
-    summary: str            # finishes the sentence "<label> ..." on the Speech Settings page
+    summary: str
     recommended: bool = False
 
     @property
@@ -82,7 +96,10 @@ DEFAULT_MODEL_ID = "large-v3-turbo"
 
 
 def get_model(model_id: str | None = None) -> WhisperModel:
-    """The catalog entry for *model_id*; the default model for None or an id the catalog doesn't know."""
+    """Return the catalog entry for *model_id*.
+
+    The default model is returned for None or for an id the catalog does not know.
+    """
     for model in MODELS:
         if model.id == model_id:
             return model
@@ -90,16 +107,19 @@ def get_model(model_id: str | None = None) -> WhisperModel:
 
 
 def models_root() -> str:
+    """Return the folder that holds all downloaded models."""
     return os.path.join(user_data_dir(), "models")
 
 
 def managed_model_dir(model_id: str | None = None) -> str:
+    """Return the folder in which the model *model_id* is downloaded (the default model for None)."""
     return os.path.join(models_root(), get_model(model_id).folder)
 
 
-# ── What is on disk ─────────────────────────────────────────────────
+# --- What is on disk ---
 
 def _read_manifest(model_dir: str) -> dict | None:
+    """Return the manifest written when a download finished, or None if it is missing or malformed."""
     try:
         with open(os.path.join(model_dir, _MANIFEST_NAME), encoding="utf-8") as manifest_file:
             manifest = json.load(manifest_file)
@@ -109,9 +129,10 @@ def _read_manifest(model_dir: str) -> dict | None:
 
 
 def is_downloaded(model_dir: str | None = None, model_id: str | None = None) -> bool:
-    """True if every required file is present at exactly the size recorded when the download finished.
+    """Return whether every required file is present at exactly the size recorded when the download finished.
 
-    Looks in *model_dir*, or in the managed folder of *model_id* (the default model if neither is given)."""
+    Looks in *model_dir*, or in the managed folder of *model_id* (the default model if neither is given).
+    """
     model_dir = model_dir or managed_model_dir(model_id)
     manifest = _read_manifest(model_dir)
     if manifest is None:
@@ -126,23 +147,24 @@ def is_downloaded(model_dir: str | None = None, model_id: str | None = None) -> 
 
 
 def has_partial_download(model_dir: str | None = None, model_id: str | None = None) -> bool:
+    """Return whether an interrupted download left a partial file that a new download would continue."""
     model_dir = model_dir or managed_model_dir(model_id)
     return any(os.path.exists(os.path.join(model_dir, name + _PART_SUFFIX)) for name in REQUIRED_FILES)
 
 
 def delete(model_dir: str | None = None, model_id: str | None = None) -> None:
-    """Removes the downloaded model (and any partial download); other models are left alone."""
+    """Remove the downloaded model and any partial download; other models are left alone."""
     shutil.rmtree(model_dir or managed_model_dir(model_id), ignore_errors=True)
 
 
-# ── Asking the server ───────────────────────────────────────────────
+# --- Asking the server ---
 
 def _open(request: urllib.request.Request):
     return urllib.request.urlopen(request, timeout=_REQUEST_TIMEOUT_S)  # noqa: S310 — https URL built from constants
 
 
 def list_remote_files(base_url: str = HF_BASE_URL, model_id: str | None = None) -> dict[str, RemoteFile]:
-    """Size and checksum of every required file, as the repository reports them."""
+    """Return the size and checksum of every required file, as the repository reports them."""
     url = f"{base_url}/api/models/{get_model(model_id).repo}/tree/{MODEL_REVISION}"
     with _open(urllib.request.Request(url, headers={"Accept": "application/json"})) as response:
         entries = json.load(response)
@@ -158,7 +180,7 @@ def list_remote_files(base_url: str = HF_BASE_URL, model_id: str | None = None) 
 
 
 def _friendly_error(error: Exception) -> Exception:
-    """A readable message for a failed download; the partial file is kept so Download continues it."""
+    """Return a readable error for a failed download. The partial file is kept so that Download continues it."""
     if isinstance(error, urllib.error.HTTPError):
         return RuntimeError(f"The download server answered with an error (HTTP {error.code}) — try again later")
     if isinstance(error, urllib.error.URLError):
@@ -170,9 +192,10 @@ def _friendly_error(error: Exception) -> Exception:
     return error
 
 
-# ── Downloading ─────────────────────────────────────────────────────
+# --- Downloading ---
 
 def _raise_if_cancelled(cancel_event) -> None:
+    """Raise DownloadCancelledError if the cancel event is set."""
     if cancel_event is not None and cancel_event.is_set():
         raise DownloadCancelledError()
 
@@ -266,13 +289,18 @@ def download(
     model_dir: str | None = None,
     model_id: str | None = None,
 ) -> None:
-    """
-    Downloads a model into *model_dir* (the managed folder of *model_id* by default).
+    """Download a model into *model_dir* (the managed folder of *model_id* by default).
 
-    :param progress: called as progress(bytes_done, bytes_total, what).
-    :param model_id: which model from MODELS; the default (turbo) if not given.
-    :raises DownloadCancelledError: if *cancel_event* was set; what was fetched
-        so far is kept and the next call continues from it.
+    Args:
+        progress: Called as progress(bytes_done, bytes_total, what).
+        cancel_event: An event that stops the download when it is set.
+        base_url: The server to download from.
+        model_dir: The folder to download into.
+        model_id: Which model from MODELS; the default (turbo) if not given.
+
+    Raises:
+        DownloadCancelledError: *cancel_event* was set. What was fetched so far is kept and the next call continues
+            from it.
     """
     try:
         model = get_model(model_id)

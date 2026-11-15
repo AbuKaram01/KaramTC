@@ -28,7 +28,7 @@ def linux(monkeypatch):
     monkeypatch.setattr(winsupport, "is_windows", lambda: False)
 
 
-# -- config.fallback_base_dir -----------------------------------------------------------------------------
+# --- Config.fallback_base_dir ---
 
 def test_on_linux_the_fallback_folders_are_the_xdg_defaults(linux, monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -64,7 +64,7 @@ def test_the_data_folder_without_glib_follows_the_fallback(windows, monkeypatch)
     assert config.user_data_dir() == os.path.join(r"C:\Users\Ali\AppData\Local", APP_ID)
 
 
-# -- winsupport: finding the GTK runtime -----------------------------------------------------------------
+# --- Winsupport: finding the GTK runtime ---
 
 def make_runtime(folder):
     (folder / "bin").mkdir(parents=True)
@@ -79,7 +79,8 @@ def clean_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("PATH", "original")
     monkeypatch.setattr(winsupport, "_dll_directories", [])
-    # The installer puts the application beside its virtual environment: <app>\.venv is sys.prefix, <app>\gtk the runtime.
+    # The installer puts the application beside its virtual environment: <app>\.venv is sys.prefix and <app>\gtk is
+    # the runtime.
     monkeypatch.setattr(sys, "prefix", str(tmp_path / "app" / ".venv"))
 
 
@@ -124,7 +125,9 @@ def test_the_variable_still_wins_over_the_runtime_inside_the_installer(clean_env
     assert winsupport.runtime_folder() == custom
 
 
-def test_a_variable_that_points_nowhere_falls_back_to_the_runtime_inside_the_installer(clean_environment, monkeypatch, tmp_path):
+def test_a_variable_that_points_nowhere_falls_back_to_the_runtime_inside_the_installer(
+    clean_environment, monkeypatch, tmp_path
+):
     bundled = make_runtime(tmp_path / "app" / "gtk")
     monkeypatch.setenv(winsupport.GTK_DIR_VARIABLE, str(tmp_path / "gone"))
     assert winsupport.runtime_folder() == bundled
@@ -136,9 +139,11 @@ def test_a_folder_without_bin_is_not_a_runtime(clean_environment, tmp_path):
     assert winsupport.runtime_folder() == default
 
 
-# -- winsupport: preparing it -------------------------------------------------------------------------------
+# --- Winsupport: preparing it ---
 
-def test_the_runtime_is_registered_for_dlls_and_put_on_the_search_paths(windows, clean_environment, monkeypatch, tmp_path):
+def test_the_runtime_is_registered_for_dlls_and_put_on_the_search_paths(
+    windows, clean_environment, monkeypatch, tmp_path
+):
     root = make_runtime(tmp_path / "gtk")
     monkeypatch.setenv(winsupport.GTK_DIR_VARIABLE, root)
     registered = []
@@ -170,7 +175,7 @@ def test_nothing_is_changed_outside_windows(linux, clean_environment, monkeypatc
     assert os.environ["PATH"] == "original"
 
 
-# -- winsupport: the Visual C++ runtime that the installer carries -----------------------------------------
+# --- Winsupport: the Visual C++ runtime that the installer carries ---
 
 RUNTIME_DLLS = ("msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll", "concrt140.dll")
 
@@ -184,16 +189,21 @@ def make_vcruntime(folder, names=RUNTIME_DLLS) -> str:
 
 
 def test_the_runtime_dlls_that_came_with_the_installer_are_found_beside_the_program(clean_environment, tmp_path):
-    assert winsupport.find_vcruntime() is None                                       # <application folder>\\vcruntime does not exist.
+    # <application folder>\\vcruntime does not exist.
+    assert winsupport.find_vcruntime() is None
     (tmp_path / "app" / "vcruntime").mkdir(parents=True)
-    assert winsupport.find_vcruntime() is None                                       # A folder without libraries is no runtime.
+    # A folder without libraries is no runtime.
+    assert winsupport.find_vcruntime() is None
     make_vcruntime(tmp_path / "other" / "vcruntime")
-    assert winsupport.find_vcruntime() is None                                       # Only the one beside this program counts.
+    # Only the one beside this program counts.
+    assert winsupport.find_vcruntime() is None
     (tmp_path / "app" / "vcruntime" / "msvcp140.dll").write_bytes(b"x")
     assert winsupport.find_vcruntime() == str(tmp_path / "app" / "vcruntime")
 
 
-def test_configuring_loads_every_runtime_dll_in_order_and_makes_the_folder_known(clean_environment, monkeypatch, tmp_path):
+def test_configuring_loads_every_runtime_dll_in_order_and_makes_the_folder_known(
+    clean_environment, monkeypatch, tmp_path
+):
     folder = make_vcruntime(tmp_path / "vcruntime")
     loaded, added = [], []
     monkeypatch.setattr(winsupport, "_load_library", lambda path: loaded.append(path))
@@ -206,7 +216,9 @@ def test_configuring_loads_every_runtime_dll_in_order_and_makes_the_folder_known
     assert os.environ["PATH"].split(os.pathsep) == [folder, "original"]
 
 
-def test_a_runtime_dll_that_cannot_be_loaded_is_skipped_and_the_others_still_are(clean_environment, monkeypatch, tmp_path):
+def test_a_runtime_dll_that_cannot_be_loaded_is_skipped_and_the_others_still_are(
+    clean_environment, monkeypatch, tmp_path
+):
     folder = make_vcruntime(tmp_path / "vcruntime")
     tried = []
 
@@ -221,7 +233,9 @@ def test_a_runtime_dll_that_cannot_be_loaded_is_skipped_and_the_others_still_are
     assert tried == ["concrt140.dll", "msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll"]
 
 
-def test_a_folder_that_windows_will_not_register_does_not_stop_the_libraries_from_being_loaded(clean_environment, monkeypatch, tmp_path):
+def test_a_folder_that_windows_will_not_register_does_not_stop_the_libraries_from_being_loaded(
+    clean_environment, monkeypatch, tmp_path
+):
     folder = make_vcruntime(tmp_path / "vcruntime")
     loaded = []
 
@@ -230,7 +244,11 @@ def test_a_folder_that_windows_will_not_register_does_not_stop_the_libraries_fro
 
     monkeypatch.setattr(os, "add_dll_directory", refuse, raising=False)
     monkeypatch.setattr(winsupport, "_load_library", lambda path: loaded.append(os.path.basename(path)))
-    assert winsupport.configure_vcruntime(folder) == loaded == ["concrt140.dll", "msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll"]
+    assert (
+        winsupport.configure_vcruntime(folder)
+        == loaded
+        == ["concrt140.dll", "msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll"]
+    )
 
 
 def test_pythons_own_runtime_is_never_loaded_a_second_time(clean_environment, monkeypatch, tmp_path):
@@ -250,7 +268,9 @@ def test_a_folder_that_cannot_be_listed_loads_nothing(clean_environment, monkeyp
     assert winsupport.configure_vcruntime(str(tmp_path / "gone")) == []
 
 
-def test_prepare_loads_the_installers_runtime_before_gtk_is_looked_for(windows, clean_environment, monkeypatch, tmp_path):
+def test_prepare_loads_the_installers_runtime_before_gtk_is_looked_for(
+    windows, clean_environment, monkeypatch, tmp_path
+):
     folder = make_vcruntime(tmp_path / "app" / "vcruntime")
     runtime = make_runtime(tmp_path / "app" / "gtk")
     steps = []
@@ -267,12 +287,16 @@ def test_prepare_loads_the_installers_runtime_before_gtk_is_looked_for(windows, 
     assert steps == [("vcruntime", folder), "looking for gtk", ("gtk", os.path.join(runtime, "bin"))]
 
 
-def test_the_runtime_dlls_are_loaded_even_when_there_is_no_gtk_runtime(windows, clean_environment, monkeypatch, tmp_path):
+def test_the_runtime_dlls_are_loaded_even_when_there_is_no_gtk_runtime(
+    windows, clean_environment, monkeypatch, tmp_path
+):
     folder = make_vcruntime(tmp_path / "app" / "vcruntime")
     steps = []
     monkeypatch.setattr(winsupport, "configure_vcruntime", lambda path: steps.append(path))
-    assert winsupport.prepare_runtime() is None                                      # No GTK: the answer stays the same ...
-    assert steps == [folder]                                                         # ... and the libraries still get their runtime.
+    # No GTK: the answer stays the same ...
+    assert winsupport.prepare_runtime() is None
+    # ... and the libraries still get their runtime.
+    assert steps == [folder]
 
 
 def test_prepare_without_the_installers_runtime_loads_nothing(windows, clean_environment, monkeypatch):
@@ -314,12 +338,14 @@ def test_on_windows_a_library_is_loaded_by_its_full_path_and_kept(tmp_path):
         winsupport._load_library(str(tmp_path / "missing.dll"))
 
 
-# -- winsupport: the log of a start without a console ---------------------------------------------------
+# --- Winsupport: the log of a start without a console ---
 
 def lose_the_console(monkeypatch):
     """pythonw.exe: no stdout, no stderr (the process's real descriptors are left alone).
 
-    Called inside the test: pytest puts its own streams back on sys.stdout and sys.stderr between a fixture and the test."""
+    Called inside the test: pytest puts its own streams back on sys.stdout and sys.stderr between a fixture and the
+    test.
+    """
     monkeypatch.setattr(sys, "stdout", None)
     monkeypatch.setattr(sys, "stderr", None)
     monkeypatch.setattr(winsupport, "_redirect_c_streams", lambda stream: None)
@@ -337,7 +363,9 @@ def test_errors_of_a_start_without_a_console_go_to_the_log(windows, clean_enviro
     sys.stderr.close()
 
 
-def test_the_log_is_appended_to_and_started_afresh_when_it_grows_too_big(windows, clean_environment, monkeypatch, tmp_path):
+def test_the_log_is_appended_to_and_started_afresh_when_it_grows_too_big(
+    windows, clean_environment, monkeypatch, tmp_path
+):
     lose_the_console(monkeypatch)
     path = tmp_path / "data" / APP_ID / "karamtc.log"
     path.parent.mkdir(parents=True)

@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/image_tab/preview.py — The fixed-size preview picture of the chosen image.
-"""
+"""The fixed-size preview picture of the chosen image."""
+
 from __future__ import annotations
 
 import gi
@@ -12,22 +11,23 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf
 
-# Every preview is drawn on a canvas of exactly this size, so the preview's
-# height never depends on the photo.
+# Every preview is drawn on a canvas of exactly this size, so the preview's height never depends on the photo.
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 560, 180
+# A photo is decoded at no more than this many pixels per side, however large the file is.
 _MAX_LOAD_SIDE = 1200
+# RGBA value that clears the canvas to fully transparent.
 _TRANSPARENT = 0x00000000
 
 
 def build_preview_texture(path: str) -> Gdk.Texture:
-    """
-    The image, scaled to fit and centred on a transparent PREVIEW_WIDTH x
-    PREVIEW_HEIGHT canvas. Raises if the file can't be read as an image.
+    """Return the image at *path*, scaled to fit and centred on a transparent PREVIEW_WIDTH x PREVIEW_HEIGHT canvas.
 
-    Phone photos are stored sideways with an EXIF rotation tag; the preview is
-    shown upright (the OCR side applies the same rotation, see
-    providers/tesseract/image_prep.py). The rotation has to happen before
-    fitting the box, since it swaps width and height.
+    Phone photos are stored sideways with an EXIF rotation tag; the preview is shown upright (the OCR side applies
+    the same rotation, see providers/tesseract/image_prep.py). The rotation has to happen before fitting the box,
+    since it swaps width and height.
+
+    Raises:
+        GLib.Error: The file cannot be read as an image.
     """
     pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, _MAX_LOAD_SIDE, _MAX_LOAD_SIDE, True)
     pixbuf = pixbuf.apply_embedded_orientation() or pixbuf

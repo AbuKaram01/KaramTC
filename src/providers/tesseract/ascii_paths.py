@@ -1,26 +1,25 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-providers/tesseract/ascii_paths.py — Keeps non-ASCII paths away from tesseract.exe on Windows.
+"""Keep non-ASCII paths away from tesseract.exe on Windows.
 
-Tesseract's Windows builds are ANSI programs: the paths on their command line, and the folder
-they are started from, reach them converted to the system's ANSI code page. Arabic letters
-survive that only on a system whose code page has them (1256); on any other they become "?",
-and a user name in Arabic (so a TEMP folder and a language-data folder in Arabic) then makes
-Tesseract fail with "did not produce any output file" or "could not load language data".
+Tesseract's Windows builds are ANSI programs: the paths on their command line, and the folder they are started from,
+reach them converted to the system's ANSI code page. Arabic letters survive that only on a system whose code page has
+them (1256); on any other they become "?", and a user name in Arabic (so a TEMP folder and a language-data folder in
+Arabic) then makes Tesseract fail with "did not produce any output file" or "could not load language data".
 
 Python itself has no such problem, so the answer is to let Tesseract see ASCII only:
 
-* it is started *inside* the temporary working folder, and is given file names relative to it
-  ("result", "input.png"); the working folder is handed to Windows as UTF-16, never through
-  Tesseract's command line, so it can hold any letters;
+* it is started *inside* the temporary working folder, and is given file names relative to it ("result", "input.png");
+  the working folder is handed to Windows as UTF-16, never through Tesseract's command line, so it can hold any
+  letters;
 * a picture elsewhere with a non-ASCII path is copied into that folder first;
-* the program and the language-data folder get their 8.3 short names, or, for language data
-  when the volume has none, a directory junction inside the working folder.
+* the program and the language-data folder get their 8.3 short names, or, for language data when the volume has none,
+  a directory junction inside the working folder.
 
 Everything here does nothing outside Windows, and nothing for paths that are already ASCII.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -35,16 +34,21 @@ _JUNCTION_NAME = "tessdata"
 
 
 def _on_windows() -> bool:
+    """Return True on Windows; a function of its own so that tests can substitute the platform."""
     return sys.platform == "win32"
 
 
 def is_ascii(path: str | None) -> bool:
+    """Return True if *path* is None or made of ASCII characters only."""
     return path is None or path.isascii()
 
 
 def short_path(path: str) -> str | None:
-    """The 8.3 form of the existing *path* if it is pure ASCII, else None (also off Windows, or when the
-    volume keeps no short names: Windows then returns the long name, which is no use here)."""
+    """Return the 8.3 short form of the existing *path* if it is pure ASCII, else None.
+
+    None is also returned off Windows, and when the volume keeps no short names: Windows then returns the long name,
+    which is no use here.
+    """
     if not _on_windows():
         return None
     try:
@@ -67,16 +71,21 @@ def short_path(path: str) -> str | None:
 
 
 def launchable(program_path: str) -> str:
-    """*program_path* in a form Windows can start while Tesseract still sees only ASCII (its own folder is
-    found from this path): the short name when the path has non-ASCII letters, else the path itself."""
+    """Return *program_path* in a form Windows can start while Tesseract still sees only ASCII.
+
+    Tesseract finds its own folder from this path, so it is the short name when the path has non-ASCII letters, and
+    the path itself otherwise.
+    """
     if is_ascii(program_path):
         return program_path
     return short_path(program_path) or program_path
 
 
 def make_junction(target: str, link: str) -> bool:
-    """Makes the folder *link* a directory junction to *target* (needs no administrator rights, unlike a
-    symbolic link). False if that is not possible."""
+    """Make the folder *link* a directory junction to *target*; return False if that is not possible.
+
+    A junction needs no administrator rights, unlike a symbolic link.
+    """
     if not _on_windows():
         return False
     try:
@@ -99,33 +108,37 @@ def make_junction(target: str, link: str) -> bool:
 @dataclass
 class SafeArguments:
     """What to give Tesseract in place of the real paths, and where to start it."""
+
     image: str
     output_base: str
     tessdata_dir: str | None
-    cwd: str | None = None          # None: start it where the application is, as usual
+    # None means: start it where the application is, as usual.
+    cwd: str | None = None
 
 
 def _stage_image(image_path: str, work_dir: str) -> str:
-    """The picture as a file name inside *work_dir* (relative to it), copying it there unless it already is."""
+    """Return the picture as a file name inside *work_dir* (relative to it), copying it there unless it already is."""
     in_work_dir = os.path.normcase(os.path.dirname(image_path)) == os.path.normcase(work_dir)
     if in_work_dir and is_ascii(os.path.basename(image_path)):
         return os.path.basename(image_path)
     extension = os.path.splitext(image_path)[1].lower()
-    name = "input" + (extension if is_ascii(extension) else "")      # Leptonica reads the format from the content.
+    # Leptonica reads the format from the content, so the extension can be dropped when it is not ASCII.
+    name = "input" + (extension if is_ascii(extension) else "")
     try:
         shutil.copyfile(image_path, os.path.join(work_dir, name))
     except OSError:
-        return image_path           # Tesseract then reports what it cannot open, as it always did.
+        # Tesseract then reports what it cannot open, as it always did.
+        return image_path
     return name
 
 
 @contextlib.contextmanager
 def safe_arguments(image_path: str, output_base: str, tessdata_dir: str | None, work_dir: str):
-    """
-    Yields the SafeArguments to use for one Tesseract run whose files are in *work_dir* (a temporary folder
-    that already exists, holding *output_base*'s files and possibly the picture).
+    """Yield the SafeArguments to use for one Tesseract run whose files are in *work_dir*.
 
-    Unchanged, with no working folder, when nothing is non-ASCII or this is not Windows.
+    *work_dir* is a temporary folder that already exists, holding *output_base*'s files and possibly the picture.
+    The arguments are the original ones, with no working folder, when nothing is non-ASCII or this is not Windows.
+    Any junction made for the run is removed when the context exits.
     """
     arguments = SafeArguments(image_path, output_base, tessdata_dir)
     if not _on_windows() or all(is_ascii(path) for path in (image_path, output_base, tessdata_dir)):
@@ -135,7 +148,7 @@ def safe_arguments(image_path: str, output_base: str, tessdata_dir: str | None, 
     arguments.cwd = work_dir
     junctions: list[str] = []
     try:
-        # The output files are made inside the working folder: a name relative to it needs no ASCII path.
+        # The output files are made inside the working folder, so a name relative to it is all Tesseract needs.
         arguments.output_base = os.path.basename(output_base)
         if not is_ascii(image_path):
             arguments.image = _stage_image(image_path, work_dir)
@@ -148,8 +161,10 @@ def safe_arguments(image_path: str, output_base: str, tessdata_dir: str | None, 
 
 
 def _remove_link(link: str) -> None:
-    """Removes the junction *link* only, never what it points to (rmdir does that for a junction; unlink is the
-    fallback for any other kind of link)."""
+    """Remove the junction *link* only, never what it points to.
+
+    rmdir does that for a junction; unlink is the fallback for any other kind of link.
+    """
     try:
         os.rmdir(link)
     except OSError:
@@ -158,6 +173,10 @@ def _remove_link(link: str) -> None:
 
 
 def _junction_to(tessdata_dir: str, work_dir: str, junctions: list[str]) -> str:
+    """Return a relative name for *tessdata_dir* via a junction in *work_dir*, or the path itself if that fails.
+
+    A junction that was made is appended to *junctions* so that the caller can remove it.
+    """
     link = os.path.join(work_dir, _JUNCTION_NAME)
     if make_junction(tessdata_dir, link):
         junctions.append(link)

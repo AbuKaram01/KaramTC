@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/media_tab/done_view.py — The "transcription complete" page.
-"""
+"""The "transcription complete" page of the Audio/Video tab."""
+
 from __future__ import annotations
 
 import os
@@ -19,7 +18,7 @@ from ui.widgets import centered_row, pill_button
 
 
 def describe_result(result: MediaResult) -> str:
-    """The summary text shown on the completion page."""
+    """Return the summary text shown on the completion page."""
     language = language_name(result.language)
     if result.language_probability is not None:
         language += f" ({result.language_probability * 100:.0f}% sure)"
@@ -33,8 +32,16 @@ def describe_result(result: MediaResult) -> str:
 
 
 class DonePage:
-    """The completion page; put `widget` into the tab. (Adw.StatusPage is a
-    final type and cannot be subclassed, hence composition.)"""
+    """The completion page, with actions to open the transcript or its folder, copy the text or choose another file.
+
+    Put ``widget`` into the tab. DonePage wraps an Adw.StatusPage instead of subclassing it, because
+    Adw.StatusPage is a final type.
+
+    Args:
+        on_new_file: Called when "New file" is pressed.
+        on_copied: Called after the transcript was copied to the clipboard.
+        on_error: Called with a message when the output file or folder cannot be opened.
+    """
 
     def __init__(self, on_new_file, on_copied, on_error):
         self.widget = Adw.StatusPage()
@@ -53,10 +60,12 @@ class DonePage:
         ))
 
     def show_result(self, result: MediaResult) -> None:
+        """Show the summary of *result* and make it the target of the page's actions."""
         self._result = result
         self.widget.set_description(describe_result(result))
 
     def set_visible(self, visible: bool) -> None:
+        """Show or hide the page."""
         self.widget.set_visible(visible)
 
     def _path(self) -> str | None:

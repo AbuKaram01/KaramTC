@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 AbuKaram01
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""
-ui/main_window.py — Main application window: header, tabs, and what spans them.
+"""Main application window: header, tabs, and what spans them.
 
-The tabs themselves live in ui/pdf_tab, ui/image_tab and ui/media_tab. This
-window only wires them together: the toast overlay, the OCR and Speech
-Settings entry points, the guard against quitting mid-job, and remembering
+The tabs themselves live in ui/pdf_tab, ui/image_tab and ui/media_tab. The window only wires them together: the
+toast overlay, the OCR and Speech Settings entry points, the guard against quitting mid-job, and remembering
 where the user left off (size, maximized state, last tab).
 """
+
 from __future__ import annotations
 
 import gi
@@ -28,16 +27,22 @@ from ui.ocr_settings import present_ocr_settings
 from ui.pdf_tab import PdfTab
 from ui.speech_settings import present_speech_settings
 
+# Tab identifiers: names of the pages in the tab stack and values stored as the "last tab" setting.
 _TAB_PDF, _TAB_IMAGE, _TAB_MEDIA = "pdf", "image", "media"
+# (tab id, header icon, header label), in display order. The first tab is the default.
 _TABS = [
     (_TAB_PDF, "x-office-document-symbolic", "PDF"),
     (_TAB_IMAGE, "image-x-generic-symbolic", "Image"),
     (_TAB_MEDIA, "audio-x-generic-symbolic", "Audio/Video"),
 ]
-_OCR_TABS = (_TAB_PDF, _TAB_IMAGE)       # the tabs that need Tesseract
+# The tabs that need Tesseract. The Audio/Video tab does not.
+_OCR_TABS = (_TAB_PDF, _TAB_IMAGE)
+# Pages of the root stack: the tabs, or the install-Tesseract warning shown in their place.
 _CONTENT_TABS, _CONTENT_WARNING = "tabs", "warning"
-_STATE_SAVE_DELAY_MS = 400       # resizing fires many times a second; write once it settles
+# Resizing fires many times a second; the window state is written once it settles.
+_STATE_SAVE_DELAY_MS = 400
 
+# Bodies of the "Extraction still running" dialog, one per kind of job that quitting would interrupt.
 _PDF_RUNNING_BODY = (
     "A PDF extraction is still running. Progress is saved as it "
     "goes, so you can resume from where it left off next time you "
@@ -55,6 +60,11 @@ _MEDIA_RUNNING_BODY = (
 
 
 class OcrWindow(Adw.ApplicationWindow):
+    """The application window: a header with the tab switcher and main menu above the PDF, Image and Audio/Video tabs.
+
+    On start-up the window restores its saved size, maximized state and last tab. It locks the Settings entry
+    points while a job is running and asks for confirmation before quitting in the middle of one.
+    """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -71,7 +81,7 @@ class OcrWindow(Adw.ApplicationWindow):
         self._toast_overlay.set_child(toolbar_view)
         toolbar_view.add_top_bar(self._build_header())
 
-        # Root content: the install-Tesseract warning OR the tabs.
+        # Root content: either the install-Tesseract warning or the tabs.
         self._content_stack = Gtk.Stack()
         self._content_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         toolbar_view.set_content(self._content_stack)
@@ -86,16 +96,16 @@ class OcrWindow(Adw.ApplicationWindow):
             self.connect(signal, self._on_window_state_changed)
 
     def show_toast(self, message: str) -> None:
+        """Show *message* as a toast over the window content."""
         dialogs.show_toast(self._toast_overlay, message)
 
-    # ── Construction ──────────────────────────────────────────────────
+    # --- Construction ---
 
     def _build_header(self) -> Adw.HeaderBar:
         header = Adw.HeaderBar()
         header.set_title_widget(self._build_tab_switcher())
-        # OCR Settings are app-wide (shared by both tabs), so they live in the
-        # main menu — reachable before any file is chosen — and, as a shortcut,
-        # in each tab's language row. Ctrl+, is bound in ui/app.py.
+        # OCR Settings are app-wide (shared by both OCR tabs), so they live in the main menu, reachable before any
+        # file is chosen, and, as a shortcut, in each tab's language row. Ctrl+, is bound in ui/app.py.
         self._settings_action = Gio.SimpleAction.new("ocr-settings", None)
         self._settings_action.connect("activate", self._on_open_ocr_settings)
         self.add_action(self._settings_action)
@@ -123,13 +133,13 @@ class OcrWindow(Adw.ApplicationWindow):
         return button
 
     def _build_tab_switcher(self) -> Gtk.Box:
-        """Pill buttons in the header, where the title normally goes."""
+        """Build the linked tab buttons that take the place of the title in the header."""
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         box.add_css_class("linked")
         box.set_halign(Gtk.Align.CENTER)
         self._tab_buttons = {tab: self._tab_button(icon, label, tab) for tab, icon, label in _TABS}
         self._current_tab = _TAB_PDF
-        self._tab_buttons[_TAB_PDF].set_active(True)     # PDF is the first (default) tab
+        self._tab_buttons[_TAB_PDF].set_active(True)  # PDF is the first (default) tab.
         for button in self._tab_buttons.values():
             box.append(button)
         return box
@@ -175,16 +185,21 @@ class OcrWindow(Adw.ApplicationWindow):
         self._update_content()
 
     def _update_content(self) -> None:
-        """The OCR tabs give way to the install-Tesseract page when it is missing;
-        the Audio/Video tab doesn't need Tesseract and always shows."""
+        """Show the install-Tesseract page instead of an OCR tab when Tesseract is missing.
+
+        The Audio/Video tab does not need Tesseract and is always shown.
+        """
         needs_tesseract = self._current_tab in _OCR_TABS and not self._tesseract_installed
         self._content_stack.set_visible_child_name(_CONTENT_WARNING if needs_tesseract else _CONTENT_TABS)
 
-    # ── Remembering where the user left off ───────────────────────────
+    # --- Remembering where the user left off ---
 
     @staticmethod
     def _remember(key: str, value) -> None:
-        """Saves a value unless it is already what is saved (resizing would otherwise rewrite the file endlessly)."""
+        """Save *value* under *key* unless it is already what is saved.
+
+        Without the check, resizing the window would rewrite the settings file endlessly.
+        """
         if app_settings.get(key, None) != value:
             app_settings.set(key, value)
 
@@ -194,8 +209,11 @@ class OcrWindow(Adw.ApplicationWindow):
 
     @staticmethod
     def _size_that_fits_the_screen(width: int, height: int) -> tuple[int, int]:
-        """A size saved on a bigger screen (or on a monitor that is no longer connected) is cut down to
-        the biggest screen there is now, so the window never opens larger than anything it could be on."""
+        """Return the saved size, cut down to the biggest screen there is now.
+
+        A size saved on a bigger screen (or on a monitor that is no longer connected) would otherwise make the
+        window open larger than anything it could be shown on.
+        """
         display = Gdk.Display.get_default()
         monitors = display.get_monitors() if display is not None else None
         areas = (
@@ -221,8 +239,11 @@ class OcrWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def save_window_state(self) -> None:
-        """Remembers the maximized state and the size for the next launch. While maximized (or fullscreen)
-        the saved size is left alone: it is the normal size that un-maximizing goes back to."""
+        """Save the maximized state and the size for the next launch.
+
+        While the window is maximized (or fullscreen) the saved size is left alone: it is the normal size that
+        un-maximizing goes back to.
+        """
         if self._state_save_id:
             GLib.source_remove(self._state_save_id)
             self._state_save_id = 0
@@ -235,7 +256,7 @@ class OcrWindow(Adw.ApplicationWindow):
             self._remember(saved_settings.WINDOW_WIDTH, width)
             self._remember(saved_settings.WINDOW_HEIGHT, height)
 
-    # ── OCR Settings ──────────────────────────────────────────────────
+    # --- OCR Settings ---
 
     def _is_ocr_busy(self) -> bool:
         return self._image_tab.is_busy() or self._pdf_tab.is_running()
@@ -247,10 +268,12 @@ class OcrWindow(Adw.ApplicationWindow):
         present_ocr_settings(self, on_changed=self._on_ocr_settings_changed)
 
     def _update_settings_access(self) -> None:
-        """Locks every OCR Settings entry point (menu item, Ctrl+, and both gear
-        buttons) while an extraction is running in either OCR tab, and Speech
-        Settings while a recording is being transcribed. Deleting a language or
-        model, or switching the source, under a running job could make it fail."""
+        """Lock the Settings entry points while a job is running.
+
+        The OCR Settings entry points (menu item, Ctrl+, and both gear buttons) are locked while an extraction is
+        running in either OCR tab, and Speech Settings while a recording is being transcribed. Deleting a language
+        or model, or switching the source, under a running job could make it fail.
+        """
         enabled = not self._is_ocr_busy()
         self._settings_action.set_enabled(enabled)
         self._image_tab.set_settings_enabled(enabled)
@@ -258,12 +281,11 @@ class OcrWindow(Adw.ApplicationWindow):
         self._speech_action.set_enabled(not self._media_tab.is_running())
 
     def _on_ocr_settings_changed(self) -> None:
-        """The language source changed or a language was downloaded/deleted —
-        refresh both tabs' language rows."""
+        """Refresh the language rows of both OCR tabs after the language source or the downloaded languages changed."""
         self._image_tab.refresh_languages()
         self._pdf_tab.refresh_languages()
 
-    # ── Speech Settings ───────────────────────────────────────────────
+    # --- Speech Settings ---
 
     def _on_open_speech_settings(self, *_) -> None:
         if self._media_tab.is_running():
@@ -271,28 +293,28 @@ class OcrWindow(Adw.ApplicationWindow):
             return
         present_speech_settings(self, on_changed=self._media_tab.refresh)
 
-    # ── Quitting ──────────────────────────────────────────────────────
+    # --- Quitting ---
 
     def _on_close_request(self, *_) -> bool:
-        """
-        Warns before quitting mid-extraction: closing abruptly otherwise gives
-        no hint that an image result would be lost, or that a book is about to
-        stop partway (and why the next launch shows a "resume" banner).
+        """Warn before quitting mid-extraction.
+
+        Closing abruptly would otherwise give no hint that an image result would be lost, or that a book is about
+        to stop partway (and why the next launch shows a "resume" banner).
         """
         self.save_window_state()
         body = self._running_job_description()
         if body is None:
-            return False        # nothing running — let the window close normally
+            return False  # Nothing running: let the window close normally.
 
         dialogs.confirm(
             self, "Extraction still running", body,
             accept_id="quit", accept_label="Quit anyway", on_accept=self._quit,
             cancel_label="Keep working",
         )
-        return True             # block the close until the dialog is answered
+        return True  # Block the close until the dialog is answered.
 
     def _running_job_description(self) -> str | None:
-        """What to tell the user about the job that quitting would interrupt, or None if there is none."""
+        """Return what to tell the user about the job that quitting would interrupt, or None if there is none."""
         if self._pdf_tab.is_running():
             return _PDF_RUNNING_BODY
         if self._media_tab.is_running():
